@@ -49,27 +49,31 @@ void check_kind_against_ref(GemmKind kind, int M, int N, int K, std::mt19937& rn
 TEST(hand_checked_2x2) {
     const float A[] = {1, 2, 3, 4};
     const float B[] = {5, 6, 7, 8};
-    float C[4] = {0, 0, 0, 0};
-    gemm(GemmKind::Naive, 2, 2, 2, A, 2, B, 2, C, 2);
-    CHECK_EQ(C[0], 19.0f);
-    CHECK_EQ(C[1], 22.0f);
-    CHECK_EQ(C[2], 43.0f);
-    CHECK_EQ(C[3], 50.0f);
+    for (int ki = 0; ki < kGemmKindCount; ++ki) {
+        float C[4] = {0, 0, 0, 0};
+        gemm(static_cast<GemmKind>(ki), 2, 2, 2, A, 2, B, 2, C, 2);
+        CHECK_EQ(C[0], 19.0f);
+        CHECK_EQ(C[1], 22.0f);
+        CHECK_EQ(C[2], 43.0f);
+        CHECK_EQ(C[3], 50.0f);
+    }
 }
 
 TEST(leading_dimensions_are_respected) {
     // A is the top-left 2x2 of a 2x3 buffer, B the top-left 2x2 of a 2x4 buffer, C written into a 2x5 buffer.
     const float A[] = {1, 2, 99, 3, 4, 99};
     const float B[] = {5, 6, 99, 99, 7, 8, 99, 99};
-    float C[10];
-    for (float& v : C) v = -1.0f;
-    gemm(GemmKind::Naive, 2, 2, 2, A, 3, B, 4, C, 5);
-    CHECK_EQ(C[0], 19.0f);
-    CHECK_EQ(C[1], 22.0f);
-    CHECK_EQ(C[5], 43.0f);
-    CHECK_EQ(C[6], 50.0f);
-    CHECK_EQ(C[2], -1.0f);  // untouched padding
-    CHECK_EQ(C[9], -1.0f);
+    for (int ki = 0; ki < kGemmKindCount; ++ki) {
+        float C[10];
+        for (float& v : C) v = -1.0f;
+        gemm(static_cast<GemmKind>(ki), 2, 2, 2, A, 3, B, 4, C, 5);
+        CHECK_EQ(C[0], 19.0f);
+        CHECK_EQ(C[1], 22.0f);
+        CHECK_EQ(C[5], 43.0f);
+        CHECK_EQ(C[6], 50.0f);
+        CHECK_EQ(C[2], -1.0f);  // untouched padding
+        CHECK_EQ(C[9], -1.0f);
+    }
 }
 
 TEST(rejects_bad_arguments) {
@@ -85,6 +89,32 @@ TEST(all_kinds_match_reference_on_awkward_sizes) {
     for (int kind = 0; kind < kGemmKindCount; ++kind) {
         for (const auto& s : sizes) check_kind_against_ref(static_cast<GemmKind>(kind), s[0], s[1], s[2], rng);
     }
+}
+
+TEST(tiled_is_correct_for_odd_tile_sizes) {
+    std::mt19937 rng(11);
+    const TileConfig saved = gemm_tiled_config();
+    const TileConfig configs[] = {{1, 1, 1}, {5, 7, 3}, {64, 256, 256}, {1000, 1000, 1000}};
+    for (const TileConfig& t : configs) {
+        set_gemm_tiled_config(t);
+        check_kind_against_ref(GemmKind::Tiled, 33, 37, 29, rng);
+        check_kind_against_ref(GemmKind::Tiled, 100, 130, 70, rng);
+    }
+    set_gemm_tiled_config(saved);
+    CHECK_THROWS(set_gemm_tiled_config({0, 1, 1}));
+}
+
+TEST(threaded_is_bit_identical_to_simd) {
+    // Same packing, same micro-kernel, same k order per element: splitting M across threads
+    // must not change a single bit.
+    std::mt19937 rng(5);
+    const int M = 500, N = 70, K = 300;
+    const std::vector<float> A = random_matrix(static_cast<size_t>(M) * K, rng);
+    const std::vector<float> B = random_matrix(static_cast<size_t>(K) * N, rng);
+    std::vector<float> c1(static_cast<size_t>(M) * N), c2(static_cast<size_t>(M) * N);
+    gemm(GemmKind::Simd, M, N, K, A.data(), K, B.data(), N, c1.data(), N);
+    gemm(GemmKind::Threaded, M, N, K, A.data(), K, B.data(), N, c2.data(), N);
+    CHECK(c1 == c2);
 }
 
 TEST(kind_names_round_trip) {

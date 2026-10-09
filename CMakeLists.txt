@@ -15,6 +15,8 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g")
 option(TINYINFER_NATIVE "Compile for the host CPU (-march=native) so SIMD kernels are enabled" ON)
 option(TINYINFER_WERROR "Treat warnings as errors" ON)
 option(TINYINFER_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+option(TINYINFER_OPENMP "Use OpenMP for the threaded GEMM (falls back to single-threaded if not found)" ON)
+option(TINYINFER_BENCH "Build the benchmark programs" ON)
 
 include(CheckCXXCompilerFlag)
 
@@ -38,7 +40,20 @@ if(TINYINFER_SANITIZE)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
+set(TINYINFER_OPENMP_TARGET "")
+if(TINYINFER_OPENMP)
+  find_package(OpenMP COMPONENTS CXX)
+  if(OpenMP_CXX_FOUND)
+    set(TINYINFER_OPENMP_TARGET OpenMP::OpenMP_CXX)
+  else()
+    message(STATUS "OpenMP not found: the threaded GEMM will run single-threaded")
+  endif()
+endif()
+
 string(JOIN " " TINYINFER_FLAGS_STRING ${TINYINFER_CXX_FLAGS})
+if(TINYINFER_OPENMP_TARGET)
+  set(TINYINFER_FLAGS_STRING "${TINYINFER_FLAGS_STRING} ${OpenMP_CXX_FLAGS}")
+endif()
 set(TINYINFER_FLAGS_STRING "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}} ${TINYINFER_FLAGS_STRING}")
 string(STRIP "${TINYINFER_FLAGS_STRING}" TINYINFER_FLAGS_STRING)
 message(STATUS "tinyinfer flags: ${TINYINFER_FLAGS_STRING}")
@@ -51,9 +66,16 @@ add_library(tinyinfer STATIC
   src/sysinfo.cpp
   src/gemm/gemm.cpp
   src/gemm/gemm_naive.cpp
+  src/gemm/gemm_reordered.cpp
+  src/gemm/gemm_tiled.cpp
+  src/gemm/gemm_simd.cpp
+  src/gemm/gemm_threaded.cpp
 )
 target_include_directories(tinyinfer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(tinyinfer PUBLIC ${TINYINFER_CXX_FLAGS})
+if(TINYINFER_OPENMP_TARGET)
+  target_link_libraries(tinyinfer PUBLIC ${TINYINFER_OPENMP_TARGET})
+endif()
 target_compile_definitions(tinyinfer PRIVATE TINYINFER_BUILD_FLAGS="${TINYINFER_FLAGS_STRING}")
 
 add_executable(tinyinfer_cli tools/tinyinfer_cli.cpp)
@@ -74,3 +96,12 @@ tinyinfer_test(test_loader)
 tinyinfer_test(test_gemm)
 tinyinfer_test(test_layers)
 tinyinfer_test(test_parity ${TINYINFER_DATA_DIR})
+
+# Benchmarks. Not tests: they print tables and append CSV rows under results/.
+if(TINYINFER_BENCH)
+  foreach(name bench_gemm bench_bandwidth bench_peak bench_infer)
+    add_executable(${name} bench/${name}.cpp)
+    target_link_libraries(${name} PRIVATE tinyinfer)
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/bench)
+  endforeach()
+endif()
