@@ -14,7 +14,7 @@ weights and pixels (`data/export/ref_logits.bin`).
 | Accuracy, PyTorch, same images | 83.2% |
 | Engine | FP32, gemm threaded (AVX2+FMA, 6x16 micro-kernel) |
 | Batch size | 64 |
-| Wall time | 193.299 ms (0.193299 ms/image) |
+| Wall time | 163.532 ms (0.163532 ms/image) |
 
 Run on Intel(R) Xeon(R) Processor @ 2.10GHz, GCC 13.3.0, flags `-Wall -Wextra -Wpedantic -Wshadow -Werror -march=native -fopenmp-simd -fopenmp`, 4 threads.
 
@@ -22,16 +22,16 @@ Run on Intel(R) Xeon(R) Processor @ 2.10GHz, GCC 13.3.0, flags `-Wall -Wextra -W
 
 | Stage | Total ms | Per image ms | Share |
 |---|---:|---:|---:|
-| preprocess | 7.04 | 0.0070 | 3.7% |
-| conv1 im2col | 21.02 | 0.0210 | 10.9% |
-| conv1 gemm | 13.14 | 0.0131 | 6.8% |
-| conv1 bias+relu | 8.41 | 0.0084 | 4.4% |
-| conv2 im2col | 29.82 | 0.0298 | 15.5% |
-| conv2 gemm | 42.06 | 0.0421 | 21.8% |
-| conv2 bias+relu | 4.00 | 0.0040 | 2.1% |
-| conv3 im2col | 11.24 | 0.0112 | 5.8% |
-| conv3 gemm | 38.53 | 0.0385 | 20.0% |
-| conv3 bias+relu | 1.98 | 0.0020 | 1.0% |
-| maxpool (x3) | 12.32 | 0.0123 | 6.4% |
-| fc | 3.16 | 0.0032 | 1.6% |
-| total | 192.71 | 0.1927 | 100.0% |
+| preprocess | 7.48 | 0.0075 | 4.6% |
+| conv1 im2col | 11.89 | 0.0119 | 7.3% |
+| conv1 gemm | 10.22 | 0.0102 | 6.3% |
+| conv1 bias+relu | 8.25 | 0.0082 | 5.1% |
+| conv2 im2col | 23.92 | 0.0239 | 14.7% |
+| conv2 gemm | 35.53 | 0.0355 | 21.8% |
+| conv2 bias+relu | 4.01 | 0.0040 | 2.5% |
+| conv3 im2col | 9.22 | 0.0092 | 5.7% |
+| conv3 gemm | 34.20 | 0.0342 | 21.0% |
+| conv3 bias+relu | 2.05 | 0.0020 | 1.3% |
+| maxpool (x3) | 12.98 | 0.0130 | 8.0% |
+| fc | 3.18 | 0.0032 | 2.0% |
+| total | 162.92 | 0.1629 | 100.0% |

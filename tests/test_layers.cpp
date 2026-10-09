@@ -63,16 +63,22 @@ TEST(conv_gemm_matches_direct) {
         Tensor ref;
         conv2d_direct_nhwc(x, w, b, c.pad, ref);
         const Conv2d conv = Conv2d::from_pytorch(w, b, c.pad);
-        Tensor y, col;
-        conv.forward(x, y, col, GemmKind::Naive);
-        CHECK(y.shape == ref.shape);
-        const double err = max_abs_diff(y, ref);
         const double tol = 1e-5 * std::sqrt(static_cast<double>(c.k * c.k * c.cin)) + 1e-6;
-        if (err > tol) ::tinytest::fail(__FILE__, __LINE__, "conv mismatch " + std::to_string(err));
-        // Running forward twice with the same scratch must give the same answer (no stale state).
-        Tensor y2;
-        conv.forward(x, y2, col, GemmKind::Naive);
-        CHECK_EQ(max_abs_diff(y, y2), 0.0);
+        Tensor col;  // one scratch shared across kinds, as the model does
+        for (int ki = 0; ki < kGemmKindCount; ++ki) {
+            const GemmKind kind = static_cast<GemmKind>(ki);
+            Tensor y;
+            conv.forward(x, y, col, kind);
+            CHECK(y.shape == ref.shape);
+            const double err = max_abs_diff(y, ref);
+            if (err > tol) {
+                ::tinytest::fail(__FILE__, __LINE__, std::string("conv mismatch with ") + gemm_kind_name(kind) + ": " + std::to_string(err));
+            }
+            // Running forward twice with the same scratch must give the same answer (no stale state).
+            Tensor y2;
+            conv.forward(x, y2, col, kind);
+            CHECK_EQ(max_abs_diff(y, y2), 0.0);
+        }
     }
 }
 

@@ -28,6 +28,21 @@ bool parse_gemm_kind(const std::string& name, GemmKind& out) {
 
 GemmKind default_gemm_kind() { return GemmKind::Threaded; }
 
+bool gemm_kind_uses_packed_a(GemmKind kind) { return kind == GemmKind::Simd || kind == GemmKind::Threaded; }
+
+void gemm_packed_a(GemmKind kind, int M, int N, int K, const float* Apacked, const float* B, int ldb, float* C,
+                   int ldc) {
+    if (M < 0 || N < 0 || K < 0) throw std::invalid_argument("gemm_packed_a: negative dimension");
+    if (ldb < N || ldc < N) throw std::invalid_argument("gemm_packed_a: leading dimension smaller than row");
+    if (M == 0 || N == 0) return;
+    switch (kind) {
+        case GemmKind::Simd: gemm_simd_packed_a(M, N, K, Apacked, B, ldb, C, ldc); return;
+        case GemmKind::Threaded: gemm_threaded_packed_a(M, N, K, Apacked, B, ldb, C, ldc); return;
+        default: break;
+    }
+    throw std::invalid_argument("gemm_packed_a: kind does not take a packed A");
+}
+
 void gemm(GemmKind kind, int M, int N, int K, const float* A, int lda, const float* B, int ldb, float* C, int ldc) {
     if (M < 0 || N < 0 || K < 0) throw std::invalid_argument("gemm: negative dimension");
     if (lda < K || ldb < N || ldc < N) throw std::invalid_argument("gemm: leading dimension smaller than row");

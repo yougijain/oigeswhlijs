@@ -26,6 +26,11 @@ inline int conv_out_size(int in, int k, int pad) { return in + 2 * pad - k + 1; 
 // [batch*oh*ow][k*k*cin] with column index (kh*k + kw)*cin + c. Padding reads as 0.
 void im2col_nhwc(const float* x, int batch, int h, int w, int cin, int k, int pad, float* col);
 
+// im2col written straight into the packed-A layout of gemm_packed_a (gemm.h), so
+// the GEMM does not pack. `packed` must hold gemm_packed_a_size(batch*oh*ow, k*k*cin)
+// floats. With parallel=true the pixels are split across OpenMP threads.
+void im2col_nhwc_packed(const float* x, int batch, int h, int w, int cin, int k, int pad, bool parallel, float* packed);
+
 // Reference convolution in seven plain loops, used only to test the GEMM path.
 // w is PyTorch layout [cout][cin][k][k]. y is resized to [batch][oh][ow][cout].
 void conv2d_direct_nhwc(const Tensor& x, const Tensor& w_oihw, const Tensor& bias, int pad, Tensor& y);

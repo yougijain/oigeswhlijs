@@ -117,6 +117,46 @@ TEST(threaded_is_bit_identical_to_simd) {
     CHECK(c1 == c2);
 }
 
+namespace {
+// Independent implementation of the packed-A layout documented in gemm.h.
+std::vector<float> pack_a_by_formula(const std::vector<float>& A, int M, int K) {
+    const PackedALayout L = gemm_packed_a_layout();
+    const int m_pad = (M + L.mr - 1) / L.mr * L.mr;
+    std::vector<float> out(static_cast<size_t>(gemm_packed_a_size(M, K)), 0.0f);
+    for (int m = 0; m < M; ++m) {
+        for (int k = 0; k < K; ++k) {
+            const int b = k / L.kc;
+            const int kc_b = std::min(L.kc, K - b * L.kc);
+            const size_t off = static_cast<size_t>(b) * m_pad * L.kc + static_cast<size_t>(m / L.mr) * kc_b * L.mr +
+                               static_cast<size_t>(k % L.kc) * L.mr + static_cast<size_t>(m % L.mr);
+            out[off] = A[static_cast<size_t>(m) * K + k];
+        }
+    }
+    return out;
+}
+}  // namespace
+
+TEST(prepacked_a_is_bit_identical_to_simd) {
+    std::mt19937 rng(21);
+    const int sizes[][3] = {{7, 7, 7}, {100, 130, 70}, {150, 40, 600}, {72, 16, 256}, {73, 17, 257}, {6, 16, 27}};
+    for (const auto& s : sizes) {
+        const int M = s[0], N = s[1], K = s[2];
+        const std::vector<float> A = random_matrix(static_cast<size_t>(M) * K, rng);
+        const std::vector<float> B = random_matrix(static_cast<size_t>(K) * N, rng);
+        const std::vector<float> Ap = pack_a_by_formula(A, M, K);
+        std::vector<float> ref(static_cast<size_t>(M) * N), c1(ref.size(), -1.0f), c2(ref.size(), -1.0f);
+        gemm(GemmKind::Simd, M, N, K, A.data(), K, B.data(), N, ref.data(), N);
+        gemm_packed_a(GemmKind::Simd, M, N, K, Ap.data(), B.data(), N, c1.data(), N);
+        gemm_packed_a(GemmKind::Threaded, M, N, K, Ap.data(), B.data(), N, c2.data(), N);
+        CHECK(c1 == ref);
+        CHECK(c2 == ref);
+    }
+    float x[4] = {0, 0, 0, 0};
+    CHECK_THROWS(gemm_packed_a(GemmKind::Naive, 2, 2, 2, x, x, 2, x, 2));
+    CHECK(gemm_kind_uses_packed_a(GemmKind::Simd));
+    CHECK(!gemm_kind_uses_packed_a(GemmKind::Tiled));
+}
+
 TEST(kind_names_round_trip) {
     for (int i = 0; i < kGemmKindCount; ++i) {
         GemmKind k;

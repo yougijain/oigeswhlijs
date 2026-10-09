@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
+#include <vector>
 
 namespace tinyinfer {
 
@@ -57,6 +58,73 @@ void im2col_nhwc(const float* x, int batch, int h, int w, int cin, int k, int pa
                 }
             }
         }
+    }
+}
+
+namespace {
+
+// One pixel's im2col row (k*k taps x cin floats) into `row`. Shared by the packed writer.
+inline void im2col_row(const float* img, int h, int w, int cin, int k, int pad, int oy, int ox, float* row) {
+    const size_t run = static_cast<size_t>(cin) * sizeof(float);
+    const int ix0 = ox - pad;
+    const bool row_inside = ix0 >= 0 && ix0 + k <= w;
+    float* out = row;
+    for (int ky = 0; ky < k; ++ky) {
+        const int iy = oy + ky - pad;
+        if (iy < 0 || iy >= h) {
+            std::memset(out, 0, run * static_cast<size_t>(k));
+        } else if (row_inside) {
+            std::memcpy(out, img + (static_cast<size_t>(iy) * w + ix0) * cin, run * static_cast<size_t>(k));
+        } else {
+            for (int kx = 0; kx < k; ++kx) {
+                const int ix = ix0 + kx;
+                if (ix < 0 || ix >= w) {
+                    std::memset(out + static_cast<size_t>(kx) * cin, 0, run);
+                } else {
+                    std::memcpy(out + static_cast<size_t>(kx) * cin, img + (static_cast<size_t>(iy) * w + ix) * cin, run);
+                }
+            }
+        }
+        out += static_cast<size_t>(k) * cin;
+    }
+}
+
+// Scatter one row m of an M x K matrix into the packed-A layout described in gemm.h.
+inline void scatter_packed_row(const float* row, int64_t m, int64_t m_pad, int K, const PackedALayout& L, float* packed) {
+    const int64_t s = m / L.mr, r = m % L.mr;
+    for (int b = 0, k0 = 0; k0 < K; ++b, k0 += L.kc) {
+        const int kc_b = std::min(L.kc, K - k0);
+        float* dst = packed + static_cast<size_t>(b) * m_pad * L.kc + static_cast<size_t>(s) * kc_b * L.mr + r;
+        const float* src = row + k0;
+        for (int kk = 0; kk < kc_b; ++kk) dst[static_cast<size_t>(kk) * L.mr] = src[kk];
+    }
+}
+
+}  // namespace
+
+void im2col_nhwc_packed(const float* x, int batch, int h, int w, int cin, int k, int pad, bool parallel, float* packed) {
+    const int oh = conv_out_size(h, k, pad);
+    const int ow = conv_out_size(w, k, pad);
+    const int K = k * k * cin;
+    const int64_t M = static_cast<int64_t>(batch) * oh * ow;
+    const PackedALayout L = gemm_packed_a_layout();
+    const int64_t m_pad = (M + L.mr - 1) / L.mr * L.mr;
+    (void)parallel;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (parallel)
+#endif
+    for (int64_t m = 0; m < M; ++m) {
+        static thread_local std::vector<float> row;
+        row.resize(static_cast<size_t>(K));
+        const int b = static_cast<int>(m / (oh * ow));
+        const int pix = static_cast<int>(m % (oh * ow));
+        im2col_row(x + static_cast<size_t>(b) * h * w * cin, h, w, cin, k, pad, pix / ow, pix % ow, row.data());
+        scatter_packed_row(row.data(), m, m_pad, K, L, packed);
+    }
+    // Padding rows of the last strip must be zero: they are multiplied and then discarded.
+    if (m_pad > M) {
+        std::vector<float> zeros(static_cast<size_t>(K), 0.0f);
+        for (int64_t m = M; m < m_pad; ++m) scatter_packed_row(zeros.data(), m, m_pad, K, L, packed);
     }
 }
 
@@ -131,13 +199,24 @@ void Conv2d::forward(const Tensor& x, Tensor& y, Tensor& col, GemmKind kind, Con
     if (M > 1 << 30) throw std::invalid_argument("conv batch too large");
 
     auto t0 = Clock::now();
-    col.resize({M, K});
-    im2col_nhwc(x.ptr(), batch, h, w, cin, k, pad, col.ptr());
+    const bool packed = gemm_kind_uses_packed_a(kind);
+    if (packed) {
+        // im2col writes the GEMM's packed layout directly; the "im2col" time now includes packing.
+        col.resize({gemm_packed_a_size(static_cast<int>(M), K)});
+        im2col_nhwc_packed(x.ptr(), batch, h, w, cin, k, pad, kind == GemmKind::Threaded, col.ptr());
+    } else {
+        col.resize({M, K});
+        im2col_nhwc(x.ptr(), batch, h, w, cin, k, pad, col.ptr());
+    }
     if (times) times->im2col_ms += ms_since(t0);
 
     t0 = Clock::now();
     y.resize({batch, oh, ow, cout});
-    gemm(kind, static_cast<int>(M), cout, K, col.ptr(), K, w_kn.ptr(), cout, y.ptr(), cout);
+    if (packed) {
+        gemm_packed_a(kind, static_cast<int>(M), cout, K, col.ptr(), w_kn.ptr(), cout, y.ptr(), cout);
+    } else {
+        gemm(kind, static_cast<int>(M), cout, K, col.ptr(), K, w_kn.ptr(), cout, y.ptr(), cout);
+    }
     if (times) times->gemm_ms += ms_since(t0);
 
     t0 = Clock::now();

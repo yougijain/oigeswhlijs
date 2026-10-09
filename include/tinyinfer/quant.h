@@ -38,6 +38,11 @@ void quantize_activations(const float* x, int64_t n, float scale, int8_t* out);
 // int8 im2col with the same layout as im2col_nhwc. Zero padding is exact in a symmetric scheme.
 void im2col_nhwc_i8(const int8_t* x, int batch, int h, int w, int cin, int k, int pad, int8_t* col);
 
+// int8 im2col straight into the packed-A layout of gemm_s8_packed_a (gemm_int8.h).
+// `packed` must hold gemm_int8_packed_a_size(batch*oh*ow, k*k*cin) bytes.
+void im2col_nhwc_i8_packed(const int8_t* x, int batch, int h, int w, int cin, int k, int pad, bool parallel,
+                           uint8_t* packed);
+
 struct QConvTimes {
     double quantize_ms = 0;
     double im2col_ms = 0;

@@ -190,8 +190,12 @@ ReLU and pooling, milliseconds per image, median of up to 10 runs:
 At batch 1 the threads buy nothing: conv3 has M = 64 rows, less than one
 72-row block, and conv2 has 256, so only conv1 (1024 rows, 15 blocks) runs in
 parallel while the fixed costs are a larger share. From batch 16 up the
-threaded kind holds about 3,550 images per second. The per-stage breakdown
-of where the remaining 0.28 ms goes is in `results/int8.md`.
+threaded kind holds about 3,550 images per second.
+
+These are the M3 numbers. The M4 work on the passes around the GEMM
+(`results/int8.md`) took the same FP32 engine to 0.142 ms per image at batch
+64 (7,000 images per second, 82x over naive), and the per-stage breakdown of
+where that time goes is there.
 
 ## Same source, other compiler (Clang 18, no OpenMP, GFLOP/s)
 

@@ -101,6 +101,48 @@ TEST(int8_gemm_kinds_are_exact) {
     }
 }
 
+namespace {
+std::vector<uint8_t> pack_a_i8_by_formula(const std::vector<int8_t>& A, int M, int K) {
+    const PackedALayoutI8 L = gemm_int8_packed_a_layout();
+    const int m_pad = (M + L.mr - 1) / L.mr * L.mr;
+    std::vector<uint8_t> out(static_cast<size_t>(gemm_int8_packed_a_size(M, K)), 0);
+    for (int m = 0; m < M; ++m) {
+        for (int k = 0; k < K; ++k) {
+            const int b = k / L.kc;
+            const int kc_b = std::min(L.kc, K - b * L.kc);
+            const int groups = (kc_b + L.group - 1) / L.group;
+            const size_t off = static_cast<size_t>(b) * m_pad * L.kc + static_cast<size_t>(m / L.mr) * groups * L.mr * L.group +
+                               static_cast<size_t>((k % L.kc) / L.group) * L.mr * L.group +
+                               static_cast<size_t>(m % L.mr) * L.group + static_cast<size_t>(k % L.group);
+            out[off] = static_cast<uint8_t>(static_cast<uint8_t>(A[static_cast<size_t>(m) * K + k]) ^ L.xor_mask);
+        }
+    }
+    return out;
+}
+}  // namespace
+
+TEST(int8_prepacked_a_is_exact) {
+    if (!gemm_int8_kind_uses_packed_a(GemmInt8Kind::Simd)) {
+        std::printf("  (backend packs int16: pre-packed A not supported, skipped)\n");
+        return;
+    }
+    const int sizes[][3] = {{7, 7, 7}, {100, 130, 70}, {150, 40, 600}, {73, 17, 257}, {5, 16, 27}, {64, 128, 576}};
+    for (const auto& s : sizes) {
+        const int M = s[0], N = s[1], K = s[2];
+        for (int extremes = 0; extremes < 2; ++extremes) {
+            const std::vector<int8_t> A = random_i8(static_cast<size_t>(M) * K, extremes != 0);
+            const std::vector<int8_t> B = random_i8(static_cast<size_t>(K) * N, extremes != 0);
+            const std::vector<uint8_t> Ap = pack_a_i8_by_formula(A, M, K);
+            std::vector<int32_t> ref(static_cast<size_t>(M) * N), c1(ref.size(), 7), c2(ref.size(), 7);
+            gemm_s8(GemmInt8Kind::Naive, M, N, K, A.data(), K, B.data(), N, ref.data(), N);
+            gemm_s8_packed_a(GemmInt8Kind::Simd, M, N, K, Ap.data(), B.data(), N, c1.data(), N);
+            gemm_s8_packed_a(GemmInt8Kind::Threaded, M, N, K, Ap.data(), B.data(), N, c2.data(), N);
+            CHECK(c1 == ref);
+            CHECK(c2 == ref);
+        }
+    }
+}
+
 TEST(int8_gemm_respects_leading_dimensions) {
     const int8_t A[] = {1, 2, 99, 3, 4, 99};
     const int8_t B[] = {5, 6, 99, 99, 7, 8, 99, 99};

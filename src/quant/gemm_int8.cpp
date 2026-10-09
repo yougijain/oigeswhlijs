@@ -26,6 +26,23 @@ bool parse_gemm_int8_kind(const std::string& name, GemmInt8Kind& out) {
 
 GemmInt8Kind default_gemm_int8_kind() { return GemmInt8Kind::Threaded; }
 
+bool gemm_int8_kind_uses_packed_a(GemmInt8Kind kind) {
+    return (kind == GemmInt8Kind::Simd || kind == GemmInt8Kind::Threaded) && gemm_int8_packed_a_layout().elem_bytes == 1;
+}
+
+void gemm_s8_packed_a(GemmInt8Kind kind, int M, int N, int K, const uint8_t* Apacked, const int8_t* B, int ldb,
+                      int32_t* C, int ldc) {
+    if (M < 0 || N < 0 || K < 0) throw std::invalid_argument("gemm_s8_packed_a: negative dimension");
+    if (ldb < N || ldc < N) throw std::invalid_argument("gemm_s8_packed_a: leading dimension smaller than row");
+    if (!gemm_int8_kind_uses_packed_a(kind)) throw std::invalid_argument("gemm_s8_packed_a: kind does not take a packed A");
+    if (M == 0 || N == 0) return;
+    if (kind == GemmInt8Kind::Simd) {
+        gemm_s8_simd_packed_a(M, N, K, Apacked, B, ldb, C, ldc);
+    } else {
+        gemm_s8_threaded_packed_a(M, N, K, Apacked, B, ldb, C, ldc);
+    }
+}
+
 void gemm_s8(GemmInt8Kind kind, int M, int N, int K, const int8_t* A, int lda, const int8_t* B, int ldb, int32_t* C,
              int ldc) {
     if (M < 0 || N < 0 || K < 0) throw std::invalid_argument("gemm_s8: negative dimension");

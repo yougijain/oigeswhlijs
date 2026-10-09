@@ -91,6 +91,93 @@ void im2col_nhwc_i8(const int8_t* x, int batch, int h, int w, int cin, int k, in
     }
 }
 
+namespace {
+
+inline void im2col_row_i8(const int8_t* img, int h, int w, int cin, int k, int pad, int oy, int ox, int8_t* row) {
+    const size_t run = static_cast<size_t>(cin);
+    const int ix0 = ox - pad;
+    const bool row_inside = ix0 >= 0 && ix0 + k <= w;
+    int8_t* out = row;
+    for (int ky = 0; ky < k; ++ky) {
+        const int iy = oy + ky - pad;
+        if (iy < 0 || iy >= h) {
+            std::memset(out, 0, run * static_cast<size_t>(k));
+        } else if (row_inside) {
+            std::memcpy(out, img + (static_cast<size_t>(iy) * w + ix0) * cin, run * static_cast<size_t>(k));
+        } else {
+            for (int kx = 0; kx < k; ++kx) {
+                const int ix = ix0 + kx;
+                if (ix < 0 || ix >= w) {
+                    std::memset(out + static_cast<size_t>(kx) * cin, 0, run);
+                } else {
+                    std::memcpy(out + static_cast<size_t>(kx) * cin, img + (static_cast<size_t>(iy) * w + ix) * cin, run);
+                }
+            }
+        }
+        out += static_cast<size_t>(k) * cin;
+    }
+}
+
+// Scatter row m into the packed layout of gemm_int8.h. The 4 k of a group are
+// consecutive bytes of the row, so a group is one 32-bit copy (xor mask applied
+// to all four bytes at once); only a partial last group goes byte by byte.
+inline void scatter_packed_row_i8(const int8_t* row, int64_t m, int64_t m_pad, int K, const PackedALayoutI8& L,
+                                  uint8_t* packed) {
+    const int64_t s = m / L.mr, r = m % L.mr;
+    const uint32_t mask4 = static_cast<uint32_t>(L.xor_mask) * 0x01010101u;
+    const size_t gstride = static_cast<size_t>(L.mr) * 4;
+    for (int b = 0, k0 = 0; k0 < K; ++b, k0 += L.kc) {
+        const int kc_b = std::min(L.kc, K - k0);
+        const int groups = (kc_b + 3) / 4, full = kc_b / 4;
+        uint8_t* strip = packed + static_cast<size_t>(b) * m_pad * L.kc + static_cast<size_t>(s) * groups * gstride +
+                         static_cast<size_t>(r) * 4;
+        const int8_t* src = row + k0;
+        for (int g = 0; g < full; ++g) {
+            uint32_t v;
+            std::memcpy(&v, src + static_cast<size_t>(g) * 4, 4);
+            v ^= mask4;
+            std::memcpy(strip + static_cast<size_t>(g) * gstride, &v, 4);
+        }
+        if (full < groups) {
+            uint8_t tail[4] = {0, 0, 0, 0};
+            for (int q = 0; q < 4; ++q) {
+                const int kk = full * 4 + q;
+                if (kk < kc_b) tail[q] = static_cast<uint8_t>(static_cast<uint8_t>(src[kk]) ^ L.xor_mask);
+            }
+            std::memcpy(strip + static_cast<size_t>(full) * gstride, tail, 4);
+        }
+    }
+}
+
+}  // namespace
+
+void im2col_nhwc_i8_packed(const int8_t* x, int batch, int h, int w, int cin, int k, int pad, bool parallel,
+                           uint8_t* packed) {
+    const int oh = conv_out_size(h, k, pad);
+    const int ow = conv_out_size(w, k, pad);
+    const int K = k * k * cin;
+    const int64_t M = static_cast<int64_t>(batch) * oh * ow;
+    const PackedALayoutI8 L = gemm_int8_packed_a_layout();
+    if (L.elem_bytes != 1 || L.group != 4) throw std::logic_error("im2col_nhwc_i8_packed: unsupported packed layout");
+    const int64_t m_pad = (M + L.mr - 1) / L.mr * L.mr;
+    (void)parallel;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (parallel)
+#endif
+    for (int64_t m = 0; m < M; ++m) {
+        static thread_local std::vector<int8_t> row;
+        row.resize(static_cast<size_t>(K));
+        const int b = static_cast<int>(m / (oh * ow));
+        const int pix = static_cast<int>(m % (oh * ow));
+        im2col_row_i8(x + static_cast<size_t>(b) * h * w * cin, h, w, cin, k, pad, pix / ow, pix % ow, row.data());
+        scatter_packed_row_i8(row.data(), m, m_pad, K, L, packed);
+    }
+    if (m_pad > M) {
+        std::vector<int8_t> zeros(static_cast<size_t>(K), 0);
+        for (int64_t m = M; m < m_pad; ++m) scatter_packed_row_i8(zeros.data(), m, m_pad, K, L, packed);
+    }
+}
+
 QConv2d QConv2d::from(const Conv2d& c, float scale_in) {
     if (!(scale_in > 0.0f)) throw std::invalid_argument("conv input scale must be positive");
     QConv2d q;
@@ -121,13 +208,25 @@ void QConv2d::forward(const Tensor& x, Tensor& y, TensorI8& xq, TensorI8& col, T
     if (times) times->quantize_ms += ms_since(t0);
 
     t0 = Clock::now();
-    col.resize({M, K});
-    im2col_nhwc_i8(xq.ptr(), batch, h, w, cin, k, pad, col.ptr());
+    const bool packed = gemm_int8_kind_uses_packed_a(kind);
+    if (packed) {
+        col.resize({gemm_int8_packed_a_size(static_cast<int>(M), K)});
+        im2col_nhwc_i8_packed(xq.ptr(), batch, h, w, cin, k, pad, kind == GemmInt8Kind::Threaded,
+                              reinterpret_cast<uint8_t*>(col.ptr()));
+    } else {
+        col.resize({M, K});
+        im2col_nhwc_i8(xq.ptr(), batch, h, w, cin, k, pad, col.ptr());
+    }
     if (times) times->im2col_ms += ms_since(t0);
 
     t0 = Clock::now();
     acc.resize({M, cout});
-    gemm_s8(kind, static_cast<int>(M), cout, K, col.ptr(), K, wq.ptr(), cout, acc.ptr(), cout);
+    if (packed) {
+        gemm_s8_packed_a(kind, static_cast<int>(M), cout, K, reinterpret_cast<const uint8_t*>(col.ptr()), wq.ptr(), cout,
+                         acc.ptr(), cout);
+    } else {
+        gemm_s8(kind, static_cast<int>(M), cout, K, col.ptr(), K, wq.ptr(), cout, acc.ptr(), cout);
+    }
     if (times) times->gemm_ms += ms_since(t0);
 
     t0 = Clock::now();

@@ -51,9 +51,41 @@ void gemm_threaded(int M, int N, int K, const float* A, int lda, const float* B,
         }
     }
 }
+
+void gemm_threaded_packed_a(int M, int N, int K, const float* Ap, const float* B, int ldb, float* C, int ldc) {
+    using namespace kernel;
+    if (M <= MC) {
+        gemm_simd_packed_a(M, N, K, Ap, B, ldb, C, ldc);
+        return;
+    }
+    static thread_local std::vector<float> packed_b;
+    packed_b.resize(static_cast<size_t>(round_up(std::min(N, NC), NR)) * KC);
+    const int64_t m_pad = round_up(M, MR);
+    const int m_blocks = (M + MC - 1) / MC;
+
+    for (int jc = 0; jc < N; jc += NC) {
+        const int nc = std::min(NC, N - jc);
+        for (int pc = 0, b = 0; pc < K; pc += KC, ++b) {
+            const int kc = std::min(KC, K - pc);
+            pack_b(kc, nc, B + static_cast<size_t>(pc) * ldb + jc, ldb, packed_b.data());
+            const float* bp = packed_b.data();
+            const float* block = Ap + static_cast<size_t>(b) * m_pad * KC;
+#pragma omp parallel for schedule(dynamic, 1)
+            for (int blk = 0; blk < m_blocks; ++blk) {
+                const int ic = blk * MC;
+                const int mc = std::min(MC, M - ic);
+                run_panel(mc, nc, kc, block + static_cast<size_t>(ic / MR) * kc * MR, bp,
+                          C + static_cast<size_t>(ic) * ldc + jc, ldc, pc > 0);
+            }
+        }
+    }
+}
 #else
 void gemm_threaded(int M, int N, int K, const float* A, int lda, const float* B, int ldb, float* C, int ldc) {
     gemm_simd(M, N, K, A, lda, B, ldb, C, ldc);
+}
+void gemm_threaded_packed_a(int M, int N, int K, const float* Ap, const float* B, int ldb, float* C, int ldc) {
+    gemm_simd_packed_a(M, N, K, Ap, B, ldb, C, ldc);
 }
 #endif
 

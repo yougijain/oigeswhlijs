@@ -39,15 +39,19 @@ Calibration output (`tinyinfer quantize`):
 
 ## FP32 vs INT8
 
+Final engine (im2col writing the packed layout, see the last fix below):
+
 | | FP32 | INT8 | INT8 / FP32 |
 |---|---:|---:|---:|
-| Latency, batch 64 (ms / image) | 0.1745 | 0.1072 | **1.63x faster** |
-| Latency, batch 16 (ms / image) | 0.191 | 0.110 | 1.74x faster |
-| Latency, batch 1 (ms / image) | 0.373 | 0.315 | 1.18x faster |
-| Throughput, batch 64 (images / s) | 5,732 | 9,330 | 1.63x |
-| GEMM time, conv2, 1,000 images (ms) | 42.1 | 16.5 | 2.5x faster |
-| GEMM time, conv3, 1,000 images (ms) | 38.5 | 16.4 | 2.3x faster |
-| GEMM time, conv1, 1,000 images (ms) | 13.1 | 9.5 | 1.4x faster |
+| Latency, batch 64, same 64 images repeated (ms / image) | 0.142 | 0.106 | **1.34x faster** |
+| Latency, batch 16 (ms / image) | 0.149 | 0.120 | 1.25x faster |
+| Latency, batch 1 (ms / image) | 0.359 | 0.339 | 1.06x faster |
+| Latency, 10,000 different images streamed, batch 100 (ms / image) | 0.149 | 0.097 | **1.54x faster** |
+| Latency, 1,000 images streamed, batch 64 (ms / image) | 0.164 | 0.105 | 1.56x faster |
+| Throughput, batch 64 (images / s) | 7,046 | 9,418 | 1.34x |
+| GEMM time, conv2, 1,000 images (ms) | 35.5 | 13.6 | 2.6x faster |
+| GEMM time, conv3, 1,000 images (ms) | 34.2 | 15.2 | 2.2x faster |
+| GEMM time, conv1, 1,000 images (ms) | 10.2 | 7.7 | 1.3x faster |
 | Weights on disk (bytes) | 455,287 | 116,102 | **3.92x smaller** |
 | Accuracy, 10,000 test images | 83.71% | 83.73% | **+0.02 points** |
 | Accuracy, the 1,000 committed images | 83.20% | 83.20% | 0 |
@@ -59,10 +63,13 @@ INT8 flips a few near-ties either way and the accuracy is unchanged within
 noise. The logits move by 0.07 on average against a typical gap of several
 units between the top two classes.
 
-The GEMMs got 2.3x to 2.5x faster on the two layers with real K, and the
-end-to-end result is 1.63x because the GEMMs are now only 43% of the FP32
-time (next section). conv1 gains little: with K = 27 its cost was never the
-arithmetic.
+The GEMMs got 2.2x to 2.6x faster on the two layers with real K; end to end
+INT8 is 1.3x faster when the same 64 images sit hot in cache and 1.5x when
+images stream through, because the GEMMs are now about half of the FP32 time
+(next section) and the rest is passes whose cost barely depends on the data
+type. conv1 gains little: with K = 27 its cost was never the arithmetic.
+Earlier in this milestone the ratio read 1.63x; the last fix sped FP32 up by
+more than INT8 and narrowed it.
 
 Measured on the Mac this project is aimed at, the ratio will differ: Apple
 Silicon has no VNNI but has `sdot` with 4 NEON pipes against 4 FMA pipes, so
@@ -71,42 +78,45 @@ validated for correctness under qemu, not timed.
 
 ## Where the time goes (final, `tinyinfer parity --profile`, 1,000 images, batch 64, 4 threads)
 
-FP32, 0.193 ms per image:
+"im2col" here includes writing the GEMM's packed layout; "gemm" is the
+micro-kernel plus packing B.
+
+FP32, 0.163 ms per image:
 
 | Stage | Per image ms | Share |
 |---|---:|---:|
-| preprocess | 0.0070 | 3.7% |
-| conv1 im2col | 0.0210 | 10.9% |
-| conv1 gemm | 0.0131 | 6.8% |
-| conv1 bias+relu | 0.0084 | 4.4% |
-| conv2 im2col | 0.0298 | 15.5% |
-| conv2 gemm | 0.0421 | 21.8% |
-| conv2 bias+relu | 0.0040 | 2.1% |
-| conv3 im2col | 0.0112 | 5.8% |
-| conv3 gemm | 0.0385 | 20.0% |
-| conv3 bias+relu | 0.0020 | 1.0% |
-| maxpool (x3) | 0.0123 | 6.4% |
-| fc | 0.0032 | 1.6% |
+| preprocess | 0.0075 | 4.6% |
+| conv1 im2col + pack | 0.0119 | 7.3% |
+| conv1 gemm | 0.0102 | 6.3% |
+| conv1 bias+relu | 0.0082 | 5.1% |
+| conv2 im2col + pack | 0.0239 | 14.7% |
+| conv2 gemm | 0.0355 | 21.8% |
+| conv2 bias+relu | 0.0040 | 2.5% |
+| conv3 im2col + pack | 0.0092 | 5.7% |
+| conv3 gemm | 0.0342 | 21.0% |
+| conv3 bias+relu | 0.0020 | 1.3% |
+| maxpool (x3) | 0.0130 | 8.0% |
+| fc | 0.0032 | 2.0% |
 
-INT8, 0.119 ms per image:
+INT8, 0.105 ms per image:
 
 | Stage | Per image ms | Share |
 |---|---:|---:|
-| preprocess | 0.0068 | 5.7% |
-| conv1 quantize | 0.0009 | 0.7% |
-| conv1 im2col (int8) | 0.0169 | 14.3% |
-| conv1 gemm (int8) | 0.0095 | 8.0% |
-| conv1 dequant+bias+relu | 0.0137 | 11.6% |
-| conv2 quantize | 0.0027 | 2.3% |
-| conv2 im2col (int8) | 0.0096 | 8.1% |
-| conv2 gemm (int8) | 0.0165 | 13.9% |
-| conv2 dequant+bias+relu | 0.0053 | 4.5% |
-| conv3 quantize | 0.0012 | 1.0% |
-| conv3 im2col (int8) | 0.0030 | 2.5% |
-| conv3 gemm (int8) | 0.0164 | 13.9% |
-| conv3 dequant+bias+relu | 0.0024 | 2.1% |
-| maxpool (x3) | 0.0114 | 9.6% |
-| fc | 0.0021 | 1.8% |
+| preprocess | 0.0072 | 6.8% |
+| conv1 quantize | 0.0010 | 0.9% |
+| conv1 im2col + pack (int8) | 0.0088 | 8.4% |
+| conv1 gemm (int8) | 0.0077 | 7.3% |
+| conv1 dequant+bias+relu | 0.0153 | 14.6% |
+| conv2 quantize | 0.0026 | 2.5% |
+| conv2 im2col + pack (int8) | 0.0074 | 7.0% |
+| conv2 gemm (int8) | 0.0136 | 12.9% |
+| conv2 dequant+bias+relu | 0.0057 | 5.4% |
+| conv3 quantize | 0.0012 | 1.1% |
+| conv3 im2col + pack (int8) | 0.0021 | 2.0% |
+| conv3 gemm (int8) | 0.0152 | 14.5% |
+| conv3 dequant+bias+relu | 0.0026 | 2.4% |
+| maxpool (x3) | 0.0123 | 11.7% |
+| fc | 0.0026 | 2.5% |
 
 ## Profiling: what the tools showed, and what was done about it
 
@@ -174,13 +184,21 @@ bias or dequant, zero-fill, im2col) added up to more than the GEMM in INT8.
 | `#pragma omp simd` on the epilogue, quantise, pool loops (`-fopenmp-simd`, which GCC needs at -O2) | gprof: `QConv2d::forward` 9.1% | dequant pass 134.5M -> 17.3M instructions (callgrind) |
 | im2col copies the k taps of one kernel row in one `memcpy` for interior pixels | stage timer: conv1 im2col 0.041 ms, 15% | conv1 im2col 0.041 -> 0.021 ms per image |
 | Single-block GEMMs (M <= 72: batch-1 conv3, the fc layer) skip the OpenMP region | bench_infer: threaded slower than simd at batch 1 | batch-1 FP32 0.434 -> 0.373 ms, INT8 0.478 -> 0.315 ms |
+| im2col writes the GEMM's packed-A layout directly (`im2col_nhwc_packed`, `gemm_packed_a`; int8 likewise), so the GEMM's own packing pass is gone | gprof FP32: packing 21.5% of time after the fixes above | FP32 0.193 -> 0.164 ms per image (1,000 images), 0.175 -> 0.142 (bench, batch 64); INT8 0.119 -> 0.105 |
 
-Net: FP32 0.272 -> 0.193 ms per image (1.41x), INT8 0.264 -> 0.119 ms per
-image (2.2x), accuracy and parity results bit-for-bit unchanged (the tests
-check the int8 kernels for exact equality and the fused ReLU against the
-separate one).
+Net: FP32 0.272 -> 0.164 ms per image (1.66x), INT8 0.264 -> 0.105 ms per
+image (2.5x), accuracy and parity results bit-for-bit unchanged (the tests
+check the int8 kernels for exact equality, the pre-packed GEMMs against the
+packing-on-the-fly ones, and the fused ReLU against the separate one).
 
-### After
+The last fix had its own false start: the first INT8 version of the packed
+im2col scattered one byte at a time with a divide and a modulo per byte and
+made the INT8 engine slower than before (0.107 -> 0.180 ms per image; gprof
+put 67% of the time in that loop). Writing each group of 4 k as one 32-bit
+word, as `pack_a` already did, turned it into the gain above. Same lesson as
+the first INT8 packing, learned twice.
+
+### After the first six fixes (before the packed im2col)
 
 gprof, FP32 (1 thread): `micro_kernel` 66.1%, packing 21.5%, `im2col` 3.9%,
 `maxpool` 3.0%, bias+relu 2.5%, preprocess 1.7%.
@@ -188,24 +206,29 @@ gprof, FP32 (1 thread): `micro_kernel` 66.1%, packing 21.5%, `im2col` 3.9%,
 gprof, INT8 (1 thread): `micro_kernel` 40.7%, packing 24.9%, dequant+bias+relu
 9.6%, `maxpool` 7.3%, `im2col_i8` 5.7%, preprocess 4.0%, `quantize` 2.8%.
 
-### The bottleneck, named
+That 21.5% packing line is what the seventh fix removed. (gprof on the final
+binary is not quoted: the packed im2col is an OpenMP-outlined function and
+gprof files its time under whatever symbol precedes it, so the final
+breakdown above comes from the stage timers.)
 
-- **FP32: packing A is 21% of the time and is the next target.** The kernel
-  is compute-bound at two thirds of the profile, which is where it should
-  be. The packing exists because im2col writes the column matrix row-major
-  and the kernel wants it in MR-row strips; im2col could write the strips
-  directly and the pass would disappear. That is the one change left in
-  this engine with a plausible 20% in it.
-- **INT8: the float passes around the GEMM.** Packing is 25% (same fix as
-  above), and dequant, max-pool, im2col and quantise are another 25%: every
-  one of them walks the activations in float, and for conv1 the dequant pass
-  costs more than the GEMM it follows (0.0137 vs 0.0095 ms). The fix is to
-  keep activations in int8 between layers: requantise in the GEMM epilogue
-  to the next layer's scale, pool in int8 (max commutes with a monotonic
-  scale), and im2col from int8 directly. That quarters the bytes every one
-  of those passes touches. It was not done here because it changes the
-  numerics (one more rounding per layer) and this milestone was about
-  measuring a clean scheme first.
+### The bottleneck, named (final engine)
+
+- **FP32: the GEMM is half the time and im2col-with-packing is 28%.** The
+  micro-kernel is compute-bound at 62% to 70% of the AVX2 roofline on these
+  shapes; what is left around it is one pass that expands the input 9x and
+  writes it in strip order. The next step would be to not materialise that
+  matrix at all: have the micro-kernel read its A rows straight from the
+  image through a per-row pointer table (the "indirect GEMM" used by XNNPACK
+  and friends). That trades the 28% for a pointer load per row per k-step.
+- **INT8: the float passes around the GEMM, 40% of the time.** Dequant +
+  bias + ReLU (22%), max-pool (12%), quantise (5%) all walk the activations
+  in float, and for conv1 the dequant pass costs twice the GEMM it follows
+  (0.0153 vs 0.0077 ms). The fix is to keep activations in int8 between
+  layers: requantise in the GEMM epilogue to the next layer's scale, pool in
+  int8 (max commutes with a monotonic scale), and im2col from int8 directly.
+  That quarters the bytes every one of those passes touches. It was not done
+  here because it changes the numerics (one more rounding per layer) and the
+  milestone was about measuring a clean scheme first.
 
 ## What did not work
 
@@ -227,3 +250,6 @@ gprof, INT8 (1 thread): `micro_kernel` 40.7%, packing 24.9%, dequant+bias+relu
 - **`omp simd` on max-pool.** It was marked like the other loops and did not
   move (0.0123 before, 0.0114 after): four strided loads per output over 32
   to 128 channels is bound by the loads, not the max.
+- **The first packed INT8 im2col** (above): byte-wise scatter with a divide
+  per byte, 67% of the INT8 time, slower than no fusion at all. Fixed with
+  32-bit group copies.
