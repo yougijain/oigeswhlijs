@@ -1,0 +1,37 @@
+#include "tinyinfer/gemm.h"
+
+#include <stdexcept>
+
+namespace tinyinfer {
+
+const char* gemm_kind_name(GemmKind kind) {
+    switch (kind) {
+        case GemmKind::Naive: return "naive";
+    }
+    return "?";
+}
+
+bool parse_gemm_kind(const std::string& name, GemmKind& out) {
+    for (int i = 0; i < kGemmKindCount; ++i) {
+        const GemmKind k = static_cast<GemmKind>(i);
+        if (name == gemm_kind_name(k)) {
+            out = k;
+            return true;
+        }
+    }
+    return false;
+}
+
+GemmKind default_gemm_kind() { return GemmKind::Naive; }
+
+void gemm(GemmKind kind, int M, int N, int K, const float* A, int lda, const float* B, int ldb, float* C, int ldc) {
+    if (M < 0 || N < 0 || K < 0) throw std::invalid_argument("gemm: negative dimension");
+    if (lda < K || ldb < N || ldc < N) throw std::invalid_argument("gemm: leading dimension smaller than row");
+    if (M == 0 || N == 0) return;
+    switch (kind) {
+        case GemmKind::Naive: gemm_naive(M, N, K, A, lda, B, ldb, C, ldc); return;
+    }
+    throw std::invalid_argument("gemm: unknown kind");
+}
+
+}  // namespace tinyinfer
