@@ -20,9 +20,10 @@ runs; the file in the last column has the method and the raw data.
 | C++ engine vs PyTorch | max abs logit error 2.5e-05 (naive GEMM), 9.5e-06 (SIMD GEMM); 10,000 / 10,000 identical predictions | `results/parity.md` |
 | GEMM, naive to final (1024 x 1024 x 1024) | 0.50 to 250 GFLOP/s on 4 threads (500x); 79 GFLOP/s on 1 thread = 84% of the measured AVX2 FMA roofline | `results/gemm.md` |
 | GEMM on the network's own shapes | conv3 at batch 64: 1.70 to 261 GFLOP/s, 70% of the 4-thread AVX2 roofline | `results/gemm.md` |
-| Inference, naive to final FP32 | 11.6 to 0.175 ms per image at batch 64 (67x), 5,700 images / s | `results/gemm.md`, `results/int8.md` |
-| INT8 vs FP32 | 1.63x faster end-to-end (0.107 ms per image), GEMMs 2.3 to 2.5x faster, weights 3.92x smaller, accuracy 83.73% vs 83.71% on 10,000 images | `results/int8.md` |
-| Profiling | stage timers + gprof + callgrind; the first INT8 version was 1.07x faster, the profile named the scalar packing (41%) and the elementwise passes; six fixes took INT8 to 2.2x its first version | `results/int8.md` |
+| Inference, naive to final FP32 | 11.6 to 0.142 ms per image at batch 64 (82x), 7,000 images / s | `results/gemm.md`, `results/int8.md` |
+| INT8 vs FP32 | 1.3x faster with 64 images hot in cache, 1.5x on a 10,000-image stream (0.106 and 0.097 ms per image); GEMMs 2.2 to 2.6x faster; weights 3.92x smaller; accuracy 83.73% vs 83.71% on 10,000 images | `results/int8.md` |
+| Profiling | stage timers + gprof + callgrind; the first INT8 version was 1.07x faster, the profile named the scalar packing (41%) and the elementwise passes; seven fixes took INT8 to 2.5x and FP32 to 1.7x their first versions | `results/int8.md` |
+| Apple Silicon preview (GitHub M1 runner, 3 virtual cores) | NEON `fmla` and `sdot` kernels: FP32 0.253 and INT8 0.138 ms per image (1.8x); INT8 results bit-identical to x86 | `results/apple-m1-runner/` |
 
 ![roofline](results/roofline.png)
 
@@ -121,8 +122,17 @@ saw on 500 training images. Products accumulate in int32 and are dequantised
 to float right after the GEMM, so ReLU, pooling and the layer hand-off stay
 in float. See `results/int8.md`.
 
-**Scratch buffers are reused.** The model, both GEMMs and im2col keep their
-work buffers between calls, so steady-state inference does not allocate.
+**im2col writes the GEMM's packed layout.** The SIMD kernels want A in strips
+of 6 (AVX2) or 8 (NEON) rows per 256-deep block. Rather than have im2col write
+a row-major matrix and the GEMM copy it into strips, im2col scatters straight
+into the strips (`im2col_nhwc_packed`, `gemm_packed_a`), which removed a pass
+worth 21% of FP32 time. The layout is documented in `include/tinyinfer/gemm.h`
+and tested against an independent implementation of the formula.
+
+**Scratch buffers are reused and never zero-filled on regrowth.** The model,
+both GEMMs and im2col keep their work buffers between calls, so steady-state
+inference does not allocate; a default-initialising allocator keeps
+`resize()` from memsetting the regrown part (7% of instructions before).
 
 ## Reproducing the numbers
 
@@ -163,6 +173,9 @@ knowing before the next project:
   was the OpenMP outlined body next to it in the object file.
 - **Threads at batch 1 cost more than they gave** until single-block layers
   skipped the parallel region.
+- **The first packed INT8 im2col made INT8 slower than no fusion** (0.107 to
+  0.180 ms): a byte-wise scatter with a divide per byte. The same 32-bit
+  group copy that had fixed the INT8 packing fixed it again.
 
 ## Reproducing on Apple Silicon
 
@@ -184,14 +197,21 @@ build/bench_infer --int8 build/weights_int8.bin --csv results/infer.csv
 python python/roofline.py --isa neon
 ```
 
-`bench_peak` on an M-series core should read about 4 FMA pipes x 4 lanes x 2
-x clock (roughly 100 GFLOP/s per performance core); if it reads a quarter of
-that, the accumulator count in `bench/bench_peak.cpp` is too low for the
-core's FMA latency. For profiling, Instruments' Time Profiler replaces
+A preview of what to expect is in `results/apple-m1-runner/`, from the
+manual workflow `.github/workflows/bench-macos.yml` run on a GitHub-hosted
+virtual M1: the NEON kernels select, parity holds, INT8 is 1.8x FP32 there.
+Its `bench_peak` read 46 GFLOP/s against a kernel that reached 79, so treat
+that machine's roofline as broken. On a real M-series performance core the
+peak loop should read about 4 FMA pipes x 4 lanes x 2 x clock, roughly 100
+GFLOP/s; if it reads half that, the accumulator count in
+`bench/bench_peak.cpp` is too low for the core's FMA latency. For profiling, Instruments' Time Profiler replaces
 `gprof` and `callgrind` here; the stage timers in `tinyinfer parity --profile`
 work anywhere.
 
 ## Where to look for the usual questions
+
+`docs/whiteboard.md` is the short version: each kernel as you would write it
+on a whiteboard, the numbers that go with it, and a self-check list.
 
 - Why convolution becomes a matrix multiply and what im2col costs:
   `include/tinyinfer/layers.h`, "im2col + GEMM" above, and the conv1 row of
@@ -215,7 +235,9 @@ on Linux (x86-64, with OpenMP), under AddressSanitizer + UBSan, and with
 Apple Clang on a macOS arm64 runner so the NEON kernels are tested on real
 hardware. Actions are pinned to commit hashes and Dependabot keeps them
 current. The benchmarks are built and smoke-run in CI but their numbers are
-not recorded there: a shared runner is not a benchmark machine.
+not recorded there: a shared runner is not a benchmark machine. A separate
+manual workflow (`bench-macos.yml`, run from the Actions tab) runs the full
+suite on the macOS runner and uploads the CSVs as an artifact.
 
 ## License
 
