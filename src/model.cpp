@@ -1,6 +1,8 @@
 #include "tinyinfer/model.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 
@@ -14,7 +16,7 @@ double ms_since(Clock::time_point t0) {
 }  // namespace
 
 double Profile::total_ms() const {
-    double t = preprocess_ms + relu_ms + pool_ms + fc_ms;
+    double t = preprocess_ms + pool_ms + fc_ms;
     for (const ConvTimes& c : conv) t += c.im2col_ms + c.gemm_ms + c.bias_ms;
     return t;
 }
@@ -29,15 +31,14 @@ std::string Profile::table() const {
         s += buf;
     };
     row("preprocess", preprocess_ms);
-    const char* names[3][3] = {{"conv1 im2col", "conv1 gemm", "conv1 bias"},
-                               {"conv2 im2col", "conv2 gemm", "conv2 bias"},
-                               {"conv3 im2col", "conv3 gemm", "conv3 bias"}};
+    const char* names[3][3] = {{"conv1 im2col", "conv1 gemm", "conv1 bias+relu"},
+                               {"conv2 im2col", "conv2 gemm", "conv2 bias+relu"},
+                               {"conv3 im2col", "conv3 gemm", "conv3 bias+relu"}};
     for (int i = 0; i < 3; ++i) {
         row(names[i][0], conv[i].im2col_ms);
         row(names[i][1], conv[i].gemm_ms);
         row(names[i][2], conv[i].bias_ms);
     }
-    row("relu (x3)", relu_ms);
     row("maxpool (x3)", pool_ms);
     row("fc", fc_ms);
     row("total", total);
@@ -89,42 +90,31 @@ TinyCNN TinyCNN::load(const TensorFile& f) {
     return m;
 }
 
-void TinyCNN::preprocess(const TensorU8& images, Tensor& out) const {
-    if (images.ndim() != 4 || images.dim(1) != kChannels || images.dim(2) != kImageSize || images.dim(3) != kImageSize) {
-        throw std::invalid_argument("images must be [batch][3][32][32] u8, got " + shape_str(images.shape));
-    }
-    const int batch = static_cast<int>(images.dim(0));
-    const int hw = kImageSize * kImageSize;
-    out.resize({batch, kImageSize, kImageSize, kChannels});
-    const uint8_t* src = images.ptr();
-    float* dst = out.ptr();
-    for (int b = 0; b < batch; ++b) {
-        for (int c = 0; c < kChannels; ++c) {
-            const uint8_t* plane = src + (static_cast<size_t>(b) * kChannels + c) * hw;
-            float* o = dst + static_cast<size_t>(b) * hw * kChannels + c;
-            for (int p = 0; p < hw; ++p) {
-                o[static_cast<size_t>(p) * kChannels] = (static_cast<float>(plane[p]) / 255.0f - mean_[c]) / std_[c];
-            }
-        }
-    }
-}
+void TinyCNN::preprocess(const TensorU8& images, Tensor& out) const { preprocess_cifar(images, mean_, std_, out); }
 
-Tensor TinyCNN::forward(const TensorU8& images, GemmKind kind, Profile* prof) {
+namespace {
+float max_abs_of(const Tensor& t) {
+    float m = 0.0f;
+    for (float v : t.data) m = std::max(m, std::fabs(v));
+    return m;
+}
+}  // namespace
+
+Tensor TinyCNN::forward(const TensorU8& images, GemmKind kind, Profile* prof, LayerInputStats* stats) {
     auto t0 = Clock::now();
     preprocess(images, x_);
     if (prof) prof->preprocess_ms += ms_since(t0);
 
     for (int i = 0; i < 3; ++i) {
-        convs_[i].forward(x_, y_, col_, kind, prof ? &prof->conv[i] : nullptr);
-        t0 = Clock::now();
-        relu_(y_);
-        if (prof) prof->relu_ms += ms_since(t0);
+        if (stats) stats->max_abs[i] = std::max(stats->max_abs[i], max_abs_of(x_));
+        convs_[i].forward(x_, y_, col_, kind, prof ? &prof->conv[i] : nullptr, /*relu=*/true);
         t0 = Clock::now();
         maxpool2x2_nhwc(y_, x_);
         if (prof) prof->pool_ms += ms_since(t0);
     }
 
     t0 = Clock::now();
+    if (stats) stats->max_abs[3] = std::max(stats->max_abs[3], max_abs_of(x_));
     const int batch = static_cast<int>(x_.dim(0));
     flat_.resize({batch, x_.numel() / batch});
     flat_.data = x_.data;  // flatten is a copy of the contiguous buffer under a 2-D shape

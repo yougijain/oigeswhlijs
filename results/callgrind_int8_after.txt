@@ -1,0 +1,40 @@
+Profile data file '/home/user/oigeswhlijs/build-hsw/cg2.int8.out' (creator: callgrind-3.22.0)
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 200472643
+Trigger: Program termination
+Profiled target:  /home/user/oigeswhlijs/build-hsw/tinyinfer parity --int8 /home/user/oigeswhlijs/data/export/weights_int8.bin --gemm-int8 threaded --images /home/user/oigeswhlijs/data/export/test_images.bin --logits /home/user/oigeswhlijs/data/export/ref_logits.bin --batch 64 --limit 256 (PID 6788, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+Ir                     
+1,568,257,551 (100.0%)  PROGRAM TOTALS
+Ir                    file:function
+653,563,136 (41.67%)  /home/user/oigeswhlijs/src/quant/gemm_int8_kernel.h:tinyinfer::kernel_i8::run_panel(int, int, int, short const*, signed char const*, int const*, int*, int, bool) [clone .isra.0] [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+388,907,936 (24.80%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/avx2intrin.h:tinyinfer::kernel_i8::run_panel(int, int, int, short const*, signed char const*, int const*, int*, int, bool) [clone .isra.0]
+254,171,368 (16.21%)  /home/user/oigeswhlijs/src/quant/gemm_int8_kernel.h:tinyinfer::gemm_s8_threaded(int, int, int, signed char const*, int, signed char const*, int, int*, int) [clone ._omp_fn.0]
+ 83,131,104 ( 5.30%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/avxintrin.h:tinyinfer::kernel_i8::run_panel(int, int, int, short const*, signed char const*, int const*, int*, int, bool) [clone .isra.0]
+ 35,642,155 ( 2.27%)  /home/user/oigeswhlijs/src/quant/quant.cpp:tinyinfer::quantize_activations(float const*, long, float, signed char*) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 26,738,688 ( 1.70%)  /usr/include/c++/13/bits/stl_algobase.h:tinyinfer::quantize_activations(float const*, long, float, signed char*)
+ 25,434,880 ( 1.62%)  /home/user/oigeswhlijs/src/quant/quant.cpp:tinyinfer::im2col_nhwc_i8(signed char const*, int, int, int, int, int, int, signed char*) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 20,480,203 ( 1.31%)  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:__memcpy_avx_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 17,324,948 ( 1.10%)  /home/user/oigeswhlijs/src/quant/quant.cpp:tinyinfer::QConv2d::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::TensorT<signed char>&, tinyinfer::TensorT<signed char>&, tinyinfer::TensorT<int>&, tinyinfer::GemmInt8Kind, tinyinfer::QConvTimes*, bool) const [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  9,185,122 ( 0.59%)  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S:__memset_avx2_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  7,873,724 ( 0.50%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::preprocess_cifar(tinyinfer::TensorT<unsigned char> const&, float const*, float const*, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  7,146,496 ( 0.46%)  /usr/include/x86_64-linux-gnu/bits/string_fortified.h:tinyinfer::im2col_nhwc_i8(signed char const*, int, int, int, int, int, int, signed char*)
+  5,928,268 ( 0.38%)  /home/user/oigeswhlijs/src/quant/gemm_int8_kernel.h:tinyinfer::gemm_s8_threaded(int, int, int, signed char const*, int, signed char const*, int, int*, int)
+  5,898,262 ( 0.38%)  /usr/include/c++/13/bits/stl_uninitialized.h:std::vector<signed char, tinyinfer::DefaultInitAllocator<signed char, std::allocator<signed char> > >::_M_default_append(unsigned long)
+  5,633,472 ( 0.36%)  /home/user/oigeswhlijs/src/quant/gemm_int8_kernel.h:tinyinfer::gemm_s8_simd(int, int, int, signed char const*, int, signed char const*, int, int*, int)
+  4,568,968 ( 0.29%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  3,932,176 ( 0.25%)  /usr/include/c++/13/bits/new_allocator.h:std::vector<signed char, tinyinfer::DefaultInitAllocator<signed char, std::allocator<signed char> > >::_M_default_append(unsigned long)
+-- Auto-annotated source: /home/user/oigeswhlijs/src/quant/quant.cpp
+Ir                  
+-- line 37 ----------------------------------------
+         .           }
+         .           
+         .           float max_abs(const float* x, int64_t n) {

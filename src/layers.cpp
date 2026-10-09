@@ -32,18 +32,28 @@ void im2col_nhwc(const float* x, int batch, int h, int w, int cin, int k, int pa
         const float* img = x + static_cast<size_t>(b) * h * w * cin;
         for (int oy = 0; oy < oh; ++oy) {
             for (int ox = 0; ox < ow; ++ox) {
-                // One output pixel: k*k taps, each tap a contiguous run of cin floats.
+                // One output pixel: k rows of k taps, each tap a run of cin floats. In NHWC the
+                // k taps of one row are contiguous in the input, so an interior pixel copies
+                // k*cin floats per row in one go; only border pixels go tap by tap.
+                const int ix0 = ox - pad;
+                const bool row_inside = ix0 >= 0 && ix0 + k <= w;
                 for (int ky = 0; ky < k; ++ky) {
                     const int iy = oy + ky - pad;
-                    for (int kx = 0; kx < k; ++kx) {
-                        const int ix = ox + kx - pad;
-                        if (iy < 0 || iy >= h || ix < 0 || ix >= w) {
-                            std::memset(out, 0, run);
-                        } else {
-                            std::memcpy(out, img + (static_cast<size_t>(iy) * w + ix) * cin, run);
+                    if (iy < 0 || iy >= h) {
+                        std::memset(out, 0, run * static_cast<size_t>(k));
+                    } else if (row_inside) {
+                        std::memcpy(out, img + (static_cast<size_t>(iy) * w + ix0) * cin, run * static_cast<size_t>(k));
+                    } else {
+                        for (int kx = 0; kx < k; ++kx) {
+                            const int ix = ix0 + kx;
+                            if (ix < 0 || ix >= w) {
+                                std::memset(out + static_cast<size_t>(kx) * cin, 0, run);
+                            } else {
+                                std::memcpy(out + static_cast<size_t>(kx) * cin, img + (static_cast<size_t>(iy) * w + ix) * cin, run);
+                            }
                         }
-                        out += cin;
                     }
+                    out += static_cast<size_t>(k) * cin;
                 }
             }
         }
@@ -111,7 +121,7 @@ Conv2d Conv2d::from_pytorch(const Tensor& w_oihw, const Tensor& b, int pad) {
     return c;
 }
 
-void Conv2d::forward(const Tensor& x, Tensor& y, Tensor& col, GemmKind kind, ConvTimes* times) const {
+void Conv2d::forward(const Tensor& x, Tensor& y, Tensor& col, GemmKind kind, ConvTimes* times, bool relu) const {
     check_rank(x, 4, "conv input");
     if (x.dim(3) != cin) throw std::invalid_argument("conv input channels " + std::to_string(x.dim(3)) + " != " + std::to_string(cin));
     const int batch = static_cast<int>(x.dim(0)), h = static_cast<int>(x.dim(1)), w = static_cast<int>(x.dim(2));
@@ -132,14 +142,49 @@ void Conv2d::forward(const Tensor& x, Tensor& y, Tensor& col, GemmKind kind, Con
 
     t0 = Clock::now();
     float* yp = y.ptr();
-    for (int64_t m = 0; m < M; ++m) {
-        for (int n = 0; n < cout; ++n) yp[static_cast<size_t>(m) * cout + n] += bias.data[static_cast<size_t>(n)];
+    const float* bp = bias.ptr();
+    if (relu) {
+        for (int64_t m = 0; m < M; ++m) {
+            float* row = yp + static_cast<size_t>(m) * cout;
+#pragma omp simd
+            for (int n = 0; n < cout; ++n) row[n] = std::max(row[n] + bp[n], 0.0f);
+        }
+    } else {
+        for (int64_t m = 0; m < M; ++m) {
+            float* row = yp + static_cast<size_t>(m) * cout;
+#pragma omp simd
+            for (int n = 0; n < cout; ++n) row[n] += bp[n];
+        }
     }
     if (times) times->bias_ms += ms_since(t0);
 }
 
 void relu_(Tensor& x) {
-    for (float& v : x.data) v = v > 0.0f ? v : 0.0f;
+    float* p = x.ptr();
+    const int64_t n = x.numel();
+#pragma omp simd
+    for (int64_t i = 0; i < n; ++i) p[i] = std::max(p[i], 0.0f);
+}
+
+void preprocess_cifar(const TensorU8& images, const float mean[3], const float stddev[3], Tensor& out) {
+    constexpr int kSize = 32, kCh = 3;
+    if (images.ndim() != 4 || images.dim(1) != kCh || images.dim(2) != kSize || images.dim(3) != kSize) {
+        throw std::invalid_argument("images must be [batch][3][32][32] u8, got " + shape_str(images.shape));
+    }
+    const int batch = static_cast<int>(images.dim(0));
+    const int hw = kSize * kSize;
+    out.resize({batch, kSize, kSize, kCh});
+    const uint8_t* src = images.ptr();
+    float* dst = out.ptr();
+    for (int b = 0; b < batch; ++b) {
+        for (int c = 0; c < kCh; ++c) {
+            const uint8_t* plane = src + (static_cast<size_t>(b) * kCh + c) * hw;
+            float* o = dst + static_cast<size_t>(b) * hw * kCh + c;
+            for (int p = 0; p < hw; ++p) {
+                o[static_cast<size_t>(p) * kCh] = (static_cast<float>(plane[p]) / 255.0f - mean[c]) / stddev[c];
+            }
+        }
+    }
 }
 
 void maxpool2x2_nhwc(const Tensor& x, Tensor& y) {
@@ -159,6 +204,7 @@ void maxpool2x2_nhwc(const Tensor& x, Tensor& y) {
                 const float* p10 = p00 + static_cast<size_t>(w) * c;
                 const float* p11 = p10 + c;
                 float* out = yp + ((static_cast<size_t>(b) * oh + oy) * ow + ox) * c;
+#pragma omp simd
                 for (int ch = 0; ch < c; ++ch) {
                     out[ch] = std::max(std::max(p00[ch], p01[ch]), std::max(p10[ch], p11[ch]));
                 }

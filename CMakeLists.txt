@@ -39,6 +39,14 @@ if(TINYINFER_SANITIZE)
   list(APPEND TINYINFER_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
   add_link_options(-fsanitize=address,undefined)
 endif()
+# The elementwise passes use `#pragma omp simd`, which needs no runtime; without it
+# GCC at -O2 leaves those loops scalar. If the compiler lacks the flag, ignore the pragma.
+check_cxx_compiler_flag(-fopenmp-simd TINYINFER_HAS_OPENMP_SIMD)
+if(TINYINFER_HAS_OPENMP_SIMD)
+  list(APPEND TINYINFER_CXX_FLAGS -fopenmp-simd)
+else()
+  list(APPEND TINYINFER_CXX_FLAGS -Wno-unknown-pragmas)
+endif()
 
 set(TINYINFER_OPENMP_TARGET "")
 if(TINYINFER_OPENMP)
@@ -70,6 +78,10 @@ add_library(tinyinfer STATIC
   src/gemm/gemm_tiled.cpp
   src/gemm/gemm_simd.cpp
   src/gemm/gemm_threaded.cpp
+  src/quant/quant.cpp
+  src/quant/gemm_int8.cpp
+  src/quant/gemm_int8_simd.cpp
+  src/model_int8.cpp
 )
 target_include_directories(tinyinfer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(tinyinfer PUBLIC ${TINYINFER_CXX_FLAGS})
@@ -96,6 +108,7 @@ tinyinfer_test(test_loader)
 tinyinfer_test(test_gemm)
 tinyinfer_test(test_layers)
 tinyinfer_test(test_parity ${TINYINFER_DATA_DIR})
+tinyinfer_test(test_quant ${TINYINFER_DATA_DIR})
 
 # Benchmarks. Not tests: they print tables and append CSV rows under results/.
 if(TINYINFER_BENCH)

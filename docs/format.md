@@ -42,3 +42,20 @@ error (never undefined behaviour) when:
 
 `python/tinyfmt.py` is the reference writer and a reader used by the export
 self-check.
+
+## INT8 weights file (`weights_int8.bin`)
+
+Written by `tinyinfer quantize`. Same container; the weights are stored in
+the engine's GEMM layout rather than PyTorch's, because the per-channel
+scales belong to columns of that layout.
+
+| Name | dtype | Shape | Meaning |
+|---|---|---|---|
+| `convN.shape` | i32 | [4] | in_channels, out_channels, kernel, pad |
+| `convN.weight_q` | i8 | [k*k*cin][cout] | symmetric int8 weights, row = (ky*k + kx)*cin + ci |
+| `convN.weight_scale` | f32 | [cout] | per output channel: w = q * scale |
+| `convN.input_scale` | f32 | [1] | activation scale: xq = round(x / scale), calibrated |
+| `convN.bias` | f32 | [cout] | unchanged float bias |
+| `fc.weight_q` | i8 | [2048][10] | as above, rows in NHWC flatten order |
+| `fc.weight_scale`, `fc.input_scale`, `fc.bias` | f32 | | as above |
+| `norm.mean`, `norm.std` | f32 | [3] | copied from the float file |
