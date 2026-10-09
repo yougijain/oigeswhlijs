@@ -25,6 +25,10 @@ int gemm_thread_count() {
 // and N = out_channels at most 128, so M is where the parallelism is.
 void gemm_threaded(int M, int N, int K, const float* A, int lda, const float* B, int ldb, float* C, int ldc) {
     using namespace kernel;
+    if (M <= MC) {  // one block: a parallel region would only add fork/join (batch-1 conv3, the fc layer)
+        gemm_simd(M, N, K, A, lda, B, ldb, C, ldc);
+        return;
+    }
     static thread_local std::vector<float> packed_b;
     packed_b.resize(static_cast<size_t>(round_up(std::min(N, NC), NR)) * KC);
     const int m_blocks = (M + MC - 1) / MC;

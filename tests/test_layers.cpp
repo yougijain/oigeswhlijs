@@ -76,6 +76,16 @@ TEST(conv_gemm_matches_direct) {
     }
 }
 
+TEST(conv_fused_relu_matches_separate_relu) {
+    const Tensor x = random_tensor({2, 6, 6, 4});
+    const Conv2d conv = Conv2d::from_pytorch(random_tensor({5, 4, 3, 3}), random_tensor({5}), 1);
+    Tensor y1, y2, col;
+    conv.forward(x, y1, col, GemmKind::Naive);
+    relu_(y1);
+    conv.forward(x, y2, col, GemmKind::Naive, nullptr, /*relu=*/true);
+    CHECK(y1.data == y2.data);
+}
+
 TEST(conv_rejects_channel_mismatch) {
     const Conv2d conv = Conv2d::from_pytorch(random_tensor({4, 3, 3, 3}), random_tensor({4}), 1);
     Tensor y, col;

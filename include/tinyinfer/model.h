@@ -18,13 +18,18 @@ namespace tinyinfer {
 // Per-stage wall time accumulated over forward() calls, milliseconds.
 struct Profile {
     double preprocess_ms = 0;
-    ConvTimes conv[3];
-    double relu_ms = 0;
+    ConvTimes conv[3];  // bias_ms includes the fused ReLU
     double pool_ms = 0;
     double fc_ms = 0;
     int64_t images = 0;
     double total_ms() const;
     std::string table() const;  // markdown
+};
+
+// Largest |value| seen at each quantised layer's input: conv1, conv2, conv3, fc.
+// Filled by forward() when requested; INT8 calibration reads it.
+struct LayerInputStats {
+    float max_abs[4] = {0, 0, 0, 0};
 };
 
 class TinyCNN {
@@ -37,7 +42,7 @@ public:
     static TinyCNN load(const TensorFile& file);
 
     // images: u8 NCHW [batch][3][32][32], the raw CIFAR-10 pixels. Returns logits [batch][10].
-    Tensor forward(const TensorU8& images, GemmKind kind, Profile* prof = nullptr);
+    Tensor forward(const TensorU8& images, GemmKind kind, Profile* prof = nullptr, LayerInputStats* stats = nullptr);
 
     // uint8 NCHW -> normalised float NHWC, the same arithmetic as python/model.py normalize().
     void preprocess(const TensorU8& images, Tensor& out) const;
@@ -45,6 +50,8 @@ public:
     int64_t param_count() const;
     const Conv2d& conv(int i) const { return convs_[i]; }
     const Linear& fc() const { return fc_; }
+    float mean(int c) const { return mean_[c]; }
+    float stddev(int c) const { return std_[c]; }
 
 private:
     Conv2d convs_[3];

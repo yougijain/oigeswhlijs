@@ -37,10 +37,16 @@ struct Conv2d {
 
     static Conv2d from_pytorch(const Tensor& w_oihw, const Tensor& bias, int pad);
     // y is resized to [batch][oh][ow][cout]. col is scratch, grown as needed and reused across calls.
-    void forward(const Tensor& x, Tensor& y, Tensor& col, GemmKind kind, ConvTimes* times = nullptr) const;
+    // With relu=true the activation is applied in the same pass as the bias (one less sweep over y).
+    void forward(const Tensor& x, Tensor& y, Tensor& col, GemmKind kind, ConvTimes* times = nullptr,
+                 bool relu = false) const;
 };
 
 void relu_(Tensor& x);
+
+// uint8 NCHW [batch][3][32][32] -> normalised float NHWC [batch][32][32][3]:
+// (pixel / 255 - mean[c]) / std[c], the arithmetic of python/model.py normalize().
+void preprocess_cifar(const TensorU8& images, const float mean[3], const float stddev[3], Tensor& out);
 
 // 2x2 window, stride 2, floor on odd sizes (PyTorch default). y resized to [batch][h/2][w/2][c].
 void maxpool2x2_nhwc(const Tensor& x, Tensor& y);

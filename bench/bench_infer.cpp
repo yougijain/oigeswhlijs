@@ -1,7 +1,7 @@
 // End-to-end inference latency for every GEMM kind at several batch sizes.
 // Median of repeated forward passes over the same images.
 //
-//   bench_infer --weights W --images I [--batches 1,16,64] [--runs 10]
+//   bench_infer --weights W --images I [--int8 W8] [--batches 1,16,64] [--runs 10]
 //               [--seconds 5] [--csv results/infer.csv]
 
 #include <cstdio>
@@ -13,6 +13,7 @@
 #include "bench_util.h"
 #include "tinyinfer/loader.h"
 #include "tinyinfer/model.h"
+#include "tinyinfer/model_int8.h"
 #include "tinyinfer/sysinfo.h"
 
 using namespace tinyinfer;
@@ -47,8 +48,9 @@ int main(int argc, char** argv) {
     TinyCNN model = TinyCNN::load(wf);
     const TensorU8 images = imf.u8("images");
 
-    std::printf("cpu: %s | %s | %s | simd: %s | threads: %d\n\n", cpu_name().c_str(), compiler_name().c_str(),
-                build_flags().c_str(), gemm_simd_backend(), gemm_thread_count());
+    std::printf("cpu: %s | %s | %s | simd: %s | int8: %s | threads: %d\n\n", cpu_name().c_str(),
+                compiler_name().c_str(), build_flags().c_str(), gemm_simd_backend(), gemm_int8_backend(),
+                gemm_thread_count());
     std::printf("| engine | gemm | batch | ms / batch | ms / image | images / s | runs |\n|---|---|---:|---:|---:|---:|---:|\n");
     bench::Csv csv(args.str("csv", ""), "engine,kind,batch,runs,median_ms_per_batch,ms_per_image,images_per_s");
 
@@ -71,6 +73,17 @@ int main(int argc, char** argv) {
             if (batch <= 0 || batch > images.dim(0)) continue;
             const TensorU8 chunk = first_images(images, batch);
             measure("fp32", gemm_kind_name(kind), batch, [&] { bench::keep(model.forward(chunk, kind).data[0]); });
+        }
+    }
+    if (args.flag("int8")) {
+        TinyCNNInt8 model8 = TinyCNNInt8::load(TensorFile::read(args.str("int8", "")));
+        for (int ki = 0; ki < kGemmInt8KindCount; ++ki) {
+            const GemmInt8Kind kind = static_cast<GemmInt8Kind>(ki);
+            for (int batch : batches) {
+                if (batch <= 0 || batch > images.dim(0)) continue;
+                const TensorU8 chunk = first_images(images, batch);
+                measure("int8", gemm_int8_kind_name(kind), batch, [&] { bench::keep(model8.forward(chunk, kind).data[0]); });
+            }
         }
     }
     return 0;

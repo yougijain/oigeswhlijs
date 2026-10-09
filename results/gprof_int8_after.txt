@@ -1,0 +1,22 @@
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls   s/call   s/call  name    
+ 40.68      0.72     0.72  9384400     0.00     0.00  tinyinfer::kernel_i8::micro_kernel(int, unsigned char const*, signed char const*, int const*, int*, int, bool)
+ 24.86      1.16     0.44        1     0.44     1.19  tinyinfer::gemm_int8_backend()
+  9.60      1.33     0.17      300     0.00     0.00  tinyinfer::QConv2d::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::TensorT<signed char>&, tinyinfer::TensorT<signed char>&, tinyinfer::TensorT<int>&, tinyinfer::GemmInt8Kind, tinyinfer::QConvTimes*, bool) const
+  7.34      1.46     0.13      300     0.00     0.00  tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&)
+  5.65      1.56     0.10      300     0.00     0.00  tinyinfer::im2col_nhwc_i8(signed char const*, int, int, int, int, int, int, signed char*)
+  3.95      1.63     0.07      100     0.00     0.00  tinyinfer::preprocess_cifar(tinyinfer::TensorT<unsigned char> const&, float const*, float const*, tinyinfer::TensorT<float>&)
+  2.82      1.68     0.05      400     0.00     0.00  tinyinfer::gemm_s8_threaded(int, int, int, signed char const*, int, signed char const*, int, int*, int)
+  2.82      1.73     0.05      400     0.00     0.00  tinyinfer::quantize_activations(float const*, long, float, signed char*)
+  1.69      1.76     0.03   241800     0.00     0.00  tinyinfer::kernel_i8::run_panel(int, int, int, unsigned char const*, signed char const*, int const*, int*, int, bool)
+  0.56      1.77     0.01      301     0.00     0.00  std::vector<signed char, tinyinfer::DefaultInitAllocator<signed char, std::allocator<signed char> > >::_M_default_append(unsigned long)
+  0.00      1.77     0.00     2124     0.00     0.00  tinyinfer::checked_numel(std::vector<long, std::allocator<long> > const&)
+  0.00      1.77     0.00      400     0.00     0.00  tinyinfer::gemm_s8(tinyinfer::GemmInt8Kind, int, int, int, signed char const*, int, signed char const*, int, int*, int)
+  0.00      1.77     0.00      304     0.00     0.00  std::vector<int, std::allocator<int> >::_M_default_append(unsigned long)
+  0.00      1.77     0.00      302     0.00     0.00  std::vector<float, tinyinfer::DefaultInitAllocator<float, std::allocator<float> > >::_M_default_append(unsigned long)
+  0.00      1.77     0.00      300     0.00     0.00  tinyinfer::(anonymous namespace)::check_rank(tinyinfer::TensorT<float> const&, unsigned long, char const*)
+  0.00      1.77     0.00      300     0.00     0.00  std::vector<signed char, std::allocator<signed char> >::_M_default_append(unsigned long)
+  0.00      1.77     0.00      201     0.00     0.00  std::vector<float, std::allocator<float> >::_M_default_append(unsigned long)
