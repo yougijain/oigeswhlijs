@@ -7,6 +7,10 @@ namespace tinyinfer {
 const char* gemm_kind_name(GemmKind kind) {
     switch (kind) {
         case GemmKind::Naive: return "naive";
+        case GemmKind::Reordered: return "reordered";
+        case GemmKind::Tiled: return "tiled";
+        case GemmKind::Simd: return "simd";
+        case GemmKind::Threaded: return "threaded";
     }
     return "?";
 }
@@ -22,7 +26,7 @@ bool parse_gemm_kind(const std::string& name, GemmKind& out) {
     return false;
 }
 
-GemmKind default_gemm_kind() { return GemmKind::Naive; }
+GemmKind default_gemm_kind() { return GemmKind::Threaded; }
 
 void gemm(GemmKind kind, int M, int N, int K, const float* A, int lda, const float* B, int ldb, float* C, int ldc) {
     if (M < 0 || N < 0 || K < 0) throw std::invalid_argument("gemm: negative dimension");
@@ -30,6 +34,10 @@ void gemm(GemmKind kind, int M, int N, int K, const float* A, int lda, const flo
     if (M == 0 || N == 0) return;
     switch (kind) {
         case GemmKind::Naive: gemm_naive(M, N, K, A, lda, B, ldb, C, ldc); return;
+        case GemmKind::Reordered: gemm_reordered(M, N, K, A, lda, B, ldb, C, ldc); return;
+        case GemmKind::Tiled: gemm_tiled(M, N, K, A, lda, B, ldb, C, ldc); return;
+        case GemmKind::Simd: gemm_simd(M, N, K, A, lda, B, ldb, C, ldc); return;
+        case GemmKind::Threaded: gemm_threaded(M, N, K, A, lda, B, ldb, C, ldc); return;
     }
     throw std::invalid_argument("gemm: unknown kind");
 }

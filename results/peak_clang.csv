@@ -1,0 +1,4 @@
+kernel,lanes,accumulators,threads,median_ms,gflops
+scalar,1,8,1,268.703244,11.909049
+avx2,8,12,1,377.086529,101.833391
+avx512,16,16,1,544.140597,188.186657
