@@ -1,0 +1,40 @@
+Profile data file '/home/user/oigeswhlijs/build-hsw/cg2.fp32.out' (creator: callgrind-3.22.0)
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 102051431
+Trigger: Program termination
+Profiled target:  /home/user/oigeswhlijs/build-hsw/tinyinfer parity --weights /home/user/oigeswhlijs/data/export/weights.bin --gemm threaded --images /home/user/oigeswhlijs/data/export/test_images.bin --logits /home/user/oigeswhlijs/data/export/ref_logits.bin --batch 64 --limit 256 (PID 6770, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+Ir                     
+1,038,270,193 (100.0%)  PROGRAM TOTALS
+Ir                    file:function
+330,115,392 (31.79%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/fmaintrin.h:tinyinfer::kernel::micro_kernel(int, float const*, float const*, float*, int, bool)
+224,247,568 (21.60%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/avxintrin.h:tinyinfer::kernel::micro_kernel(int, float const*, float const*, float*, int, bool)
+219,089,128 (21.10%)  /home/user/oigeswhlijs/src/gemm/gemm_kernel.h:tinyinfer::gemm_threaded(int, int, int, float const*, int, float const*, int, float*, int) [clone ._omp_fn.0]
+123,315,680 (11.88%)  /home/user/oigeswhlijs/src/gemm/gemm_kernel.h:tinyinfer::kernel::micro_kernel(int, float const*, float const*, float*, int, bool) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 30,367,621 ( 2.92%)  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:__memcpy_avx_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 25,778,956 ( 2.48%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::im2col_nhwc(float const*, int, int, int, int, int, int, float*) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 15,140,376 ( 1.46%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::Conv2d::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::TensorT<float>&, tinyinfer::GemmKind, tinyinfer::ConvTimes*, bool) const [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 11,314,428 ( 1.09%)  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S:__memset_avx2_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  8,276,664 ( 0.80%)  /home/user/oigeswhlijs/src/gemm/gemm_kernel.h:tinyinfer::kernel::run_panel(int, int, int, float const*, float const*, float*, int, bool) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  7,873,724 ( 0.76%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::preprocess_cifar(tinyinfer::TensorT<unsigned char> const&, float const*, float const*, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  7,146,496 ( 0.69%)  /usr/include/x86_64-linux-gnu/bits/string_fortified.h:tinyinfer::im2col_nhwc(float const*, int, int, int, int, int, int, float*)
+  5,898,277 ( 0.57%)  /usr/include/c++/13/bits/stl_uninitialized.h:std::vector<float, tinyinfer::DefaultInitAllocator<float, std::allocator<float> > >::_M_default_append(unsigned long)
+  4,568,968 ( 0.44%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  3,932,192 ( 0.38%)  /usr/include/c++/13/bits/new_allocator.h:std::vector<float, tinyinfer::DefaultInitAllocator<float, std::allocator<float> > >::_M_default_append(unsigned long)
+  3,726,368 ( 0.36%)  /home/user/oigeswhlijs/src/gemm/gemm_kernel.h:tinyinfer::gemm_simd(int, int, int, float const*, int, float const*, int, float*, int)
+  3,670,076 ( 0.35%)  /usr/include/c++/13/bits/stl_algobase.h:tinyinfer::Conv2d::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::TensorT<float>&, tinyinfer::GemmKind, tinyinfer::ConvTimes*, bool) const
+  2,293,784 ( 0.22%)  /usr/include/c++/13/bits/stl_algobase.h:tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&)
+  2,173,040 ( 0.21%)  ???:0x000000000010b6a0 [???]
+-- Auto-annotated source: /usr/include/c++/13/bits/stl_algobase.h
+Ir                 
+-- line 225 ----------------------------------------
+        .              *
+        .              *  This is the simple classic generic implementation.  It will work on

@@ -1,0 +1,72 @@
+name: Benchmarks on Apple Silicon (manual)
+
+# Runs the full benchmark suite on a GitHub-hosted macOS arm64 runner (a
+# virtualised M1 with 3 cores). Started by hand from the Actions tab or the
+# API; never on push, because a shared runner is not a benchmark machine.
+# The numbers are a preview of the NEON kernels, not a substitute for a run
+# on a real Mac.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: NEON benchmarks (macOS arm64)
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: |
+          brew install ninja libomp
+          pip install numpy matplotlib
+      - name: Describe the machine
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl hw.ncpu hw.physicalcpu hw.memsize
+          sysctl -a 2>/dev/null | grep -E "hw.perflevel|cachesize|l1dcachesize|l2cachesize" || true
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DTINYINFER_NATIVE=ON -DOpenMP_ROOT="$(brew --prefix libomp)"
+          cmake --build build
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Benchmarks
+        run: |
+          mkdir -p out
+          ./build/bench_gemm --runs 1 --shapes none | tee out/backends.txt
+          ./build/bench_peak --csv out/peak.csv | tee out/peak.txt
+          ./build/bench_bandwidth --csv out/bandwidth.csv | tee out/bandwidth.txt
+          ./build/bench_gemm --csv out/gemm.csv | tee out/gemm.txt
+          ./build/bench_infer --weights data/export/weights.bin --images data/export/test_images.bin \
+            --int8 data/export/weights_int8.bin --csv out/infer.csv | tee out/infer.txt
+          ./build/tinyinfer parity --weights data/export/weights.bin --images data/export/test_images.bin \
+            --logits data/export/ref_logits.bin --gemm threaded --batch 64 --profile --md out/profile_fp32.md | tee out/parity_fp32.txt
+          ./build/tinyinfer parity --int8 data/export/weights_int8.bin --images data/export/test_images.bin \
+            --logits data/export/ref_logits.bin --gemm-int8 threaded --batch 64 --profile --md out/profile_int8.md | tee out/parity_int8.txt
+          python python/roofline.py --isa neon --gemm out/gemm.csv --peak out/peak.csv \
+            --bandwidth out/bandwidth.csv --out out/roofline.png | tee out/roofline_table.md
+      - name: Dump results into the log and the job summary
+        if: always()
+        run: |
+          for f in out/backends.txt out/peak.csv out/bandwidth.csv out/gemm.csv out/infer.csv out/roofline_table.md out/profile_fp32.md out/profile_int8.md; do
+            echo "=====BEGIN $f====="; cat "$f" 2>/dev/null || echo "(missing)"; echo "=====END $f====="
+          done
+          {
+            echo "## NEON benchmarks"; echo; cat out/backends.txt; echo
+            echo '```'; cat out/peak.txt out/bandwidth.txt; echo '```'; echo
+            cat out/roofline_table.md; echo
+            echo "### Inference"; echo; sed -n '3,$p' out/infer.txt
+          } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: results-macos-arm64
+          path: out/
+          if-no-files-found: warn

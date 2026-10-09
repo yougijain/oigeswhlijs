@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: ${{ matrix.compiler }} (Linux x86-64)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libomp-dev
+      - name: Configure
+        run: |
+          if [ "${{ matrix.compiler }}" = "gcc" ]; then CXX=g++; else CXX=clang++; fi
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=$CXX -DTINYINFER_NATIVE=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Benchmarks build and run (smoke, not for numbers)
+        run: |
+          ./build/bench_gemm --runs 2 --shapes conv
+          ./build/bench_peak --iters 20000000 --runs 2
+          ./build/bench_bandwidth --mb 64 --runs 2
+          ./build/bench_infer --batches 1,16 --runs 3 --seconds 1
+
+  sanitizers:
+    name: ASan + UBSan (gcc)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTINYINFER_SANITIZE=ON -DTINYINFER_BENCH=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build --output-on-failure
+
+  macos-arm64:
+    name: Apple clang (macOS arm64, NEON)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install build tools
+        run: brew install ninja libomp
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DTINYINFER_NATIVE=ON -DOpenMP_ROOT="$(brew --prefix libomp)"
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Report which kernels this build uses
+        run: ./build/bench_gemm --runs 1 --shapes none
+
+  python:
+    name: Python scripts compile
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Byte-compile and round-trip the container writer
+        run: |
+          python -m py_compile python/*.py
+          pip install numpy
+          python - <<'PY'
+          import sys, numpy as np, tempfile, pathlib
+          sys.path.insert(0, "python")
+          from tinyfmt import write_tensors, read_tensors
+          p = pathlib.Path(tempfile.mkdtemp()) / "t.bin"
+          t = {"a": np.arange(6, dtype=np.float32).reshape(2, 3), "b": np.array([1, 2], dtype=np.int8)}
+          write_tensors(p, t)
+          back = read_tensors(p)
+          assert all(np.array_equal(back[k], t[k]) for k in t)
+          print("ok")
+          PY
