@@ -34,6 +34,15 @@ if(TINYINFER_NATIVE)
       list(APPEND TINYINFER_CXX_FLAGS -mcpu=native)
     endif()
   endif()
+  # On CPUs that advertise AVX10.1, Clang 18's -march=native enables avx10.1-256 next to
+  # AVX-512 and warns that it will promote the combination. That is a note about the
+  # host's feature set, not about this code, and -Werror must not fail the build on it.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    check_cxx_compiler_flag(-Wno-invalid-feature-combination TINYINFER_HAS_WNO_INVALID_FEATURE_COMBINATION)
+    if(TINYINFER_HAS_WNO_INVALID_FEATURE_COMBINATION)
+      list(APPEND TINYINFER_CXX_FLAGS -Wno-invalid-feature-combination)
+    endif()
+  endif()
 endif()
 if(TINYINFER_SANITIZE)
   list(APPEND TINYINFER_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
