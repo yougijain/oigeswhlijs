@@ -20,6 +20,21 @@ from cifar10 import load_split  # noqa: E402
 from model import TinyCNN, describe, forward_flops, normalize, param_count  # noqa: E402
 
 
+def cpu_name() -> str:
+    """Human-readable CPU model: /proc/cpuinfo on Linux, sysctl on macOS, platform elsewhere."""
+    try:
+        if platform.system() == "Linux":
+            for line in Path("/proc/cpuinfo").read_text().splitlines():
+                if line.startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+        if platform.system() == "Darwin":
+            import subprocess
+            return subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return platform.processor() or platform.machine()
+
+
 def augment(x: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
     """Random 32x32 crop from a 4-pixel zero-padded image, then random horizontal flip.
 
@@ -96,7 +111,7 @@ def write_model_md(path: Path, model: TinyCNN, args: argparse.Namespace, test_ac
         f"- Normalisation: per-channel mean/std from `python/model.py`",
         f"- Optimiser: SGD, momentum 0.9 (Nesterov), weight decay {args.wd}, batch {args.batch}",
         f"- Schedule: OneCycle, peak LR {args.lr}, {args.epochs} epochs, seed {args.seed}",
-        f"- Wall time: {wall_s / 60:.1f} min on {platform.processor() or platform.machine()} "
+        f"- Wall time: {wall_s / 60:.1f} min on {cpu_name()} "
         f"({torch.get_num_threads()} threads), torch {torch.__version__}",
         "",
         "## Result",
