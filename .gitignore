@@ -1,0 +1,23 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Raw dataset and training checkpoints are reproducible from python/; keep them out of git.
+data/raw/
+checkpoints/
+
+# Profiler output
+callgrind.out.*
+gmon.out
+*.prof
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
