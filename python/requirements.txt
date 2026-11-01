@@ -4,5 +4,5 @@
 #                         then pip install numpy matplotlib
 torch==2.14.1
 torchvision==0.29.1
-numpy==2.5.3
+numpy==2.5.4
 matplotlib==3.11.2
