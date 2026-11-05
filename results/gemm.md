@@ -172,9 +172,10 @@ What the roofline says:
 - On this machine the chip roofline is twice the AVX2 one, so the kernel is
   at 33% to 43% of what the hardware could do. An AVX-512 micro-kernel (for
   example 14 x 32, with 28 of the 32 zmm registers as accumulators) is the
-  obvious next step here. It is not written because it would not run on the
-  Apple Silicon machine the project is aimed at, where NEON is the only
-  width there is.
+  obvious next step here. It is not written because it would help this VM
+  and little else: Intel client CPUs since Alder Lake have no AVX-512, and
+  ARM machines have NEON, so the AVX2 and NEON kernels cover the machines the
+  project is meant to run on.
 
 ## End-to-end inference
 

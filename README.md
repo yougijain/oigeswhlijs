@@ -69,9 +69,10 @@ build/bench_gemm --csv results/gemm.csv
 ```
 
 Builds with `-O2 -Wall -Wextra -Wpedantic -Wshadow -Werror -march=native`.
-On Apple Silicon the NEON kernels are selected automatically; `brew install
-libomp` and pass `-DOpenMP_ROOT=$(brew --prefix libomp)` for the threaded
-GEMM. Without OpenMP the threaded kind silently runs single-threaded.
+The SIMD kernels are chosen at compile time from the host CPU: AVX2 (+VNNI)
+on x86-64, NEON (+dotprod) on AArch64, plain C++ elsewhere. On macOS,
+`brew install libomp` and pass `-DOpenMP_ROOT=$(brew --prefix libomp)` for the
+threaded GEMM. Without OpenMP the threaded kind silently runs single-threaded.
 
 To retrain and re-export (needs PyTorch, see `python/requirements.txt`):
 
@@ -177,36 +178,58 @@ knowing before the next project:
   0.180 ms): a byte-wise scatter with a divide per byte. The same 32-bit
   group copy that had fixed the INT8 packing fixed it again.
 
-## Reproducing on Apple Silicon
+## Reproducing on your own machine
 
-This was developed and measured on x86-64 because that is what the build
-machine had; the NEON kernels (8x12 `fmla` by element for FP32, 8x12 `sdot`
-for INT8) were cross-compiled with `aarch64-linux-gnu-g++ -march=armv8.2-a+dotprod`
-and pass every test under `qemu-aarch64`, which checks correctness, not
-speed. To get the numbers on a Mac:
+One command builds, tests and benchmarks, and writes everything into
+`results/<cpu-name>/`: machine description, the four benchmark CSVs, per-stage
+profiles for both engines, perf profiles when perf is available, and the
+roofline chart.
 
 ```sh
-brew install cmake ninja libomp
-cmake -S . -B build -G Ninja -DOpenMP_ROOT="$(brew --prefix libomp)"
-cmake --build build && ctest --test-dir build --output-on-failure
-build/bench_gemm --runs 1 --shapes none        # prints which kernels were selected
-build/bench_peak --csv results/peak.csv        # NEON FMA peak, 1 and all threads
-build/bench_bandwidth --csv results/bandwidth.csv
-build/bench_gemm --csv results/gemm.csv
-build/bench_infer --int8 build/weights_int8.bin --csv results/infer.csv
-python python/roofline.py --isa neon
+tools/run_benchmarks.sh --quick    # about 2 minutes: checks the toolchain, numbers not for use
+tools/run_benchmarks.sh            # the real run, about 10 minutes
 ```
 
-A preview of what to expect is in `results/apple-m1-runner/`, from the
-manual workflow `.github/workflows/bench-macos.yml` run on a GitHub-hosted
-virtual M1: the NEON kernels select, parity holds, INT8 is 1.8x FP32 there.
-Its `bench_peak` read 46 GFLOP/s against a kernel that reached 79, so treat
-that machine's roofline as broken. On a real M-series performance core the
-peak loop should read about 4 FMA pipes x 4 lanes x 2 x clock, roughly 100
-GFLOP/s; if it reads half that, the accumulator count in
-`bench/bench_peak.cpp` is too low for the core's FMA latency. For profiling, Instruments' Time Profiler replaces
-`gprof` and `callgrind` here; the stage timers in `tinyinfer parity --profile`
-work anywhere.
+**On Windows, use WSL2.** The code uses GCC/Clang builtins and OpenMP, so it
+builds in WSL2's Ubuntu, not with MSVC. In PowerShell, `wsl --install -d
+Ubuntu-24.04`, then in the Ubuntu shell:
+
+```sh
+sudo apt update
+sudo apt install -y build-essential cmake ninja-build git python3-numpy python3-matplotlib linux-tools-generic
+git clone https://github.com/yougijain/oigeswhlijs && cd oigeswhlijs
+tools/run_benchmarks.sh --quick && tools/run_benchmarks.sh
+```
+
+Clone inside the Linux filesystem (`~/`), not under `/mnt/c`, which is much
+slower. WSL2 runs on the real cores with only a thin hypervisor layer, so the
+kernels run at native speed, but three things decide whether the numbers are
+worth keeping:
+
+- **Power.** Plug the laptop in, set Windows to its best-performance power mode,
+  and close other programs. On battery, clocks drop and medians drift.
+- **Hybrid cores.** On Intel 12th-generation and later, OpenMP threads can land
+  on E-cores. Set `OMP_NUM_THREADS` to the P-core count (Task Manager, or `lscpu`)
+  before the run, and say so with the numbers.
+- **Profiling.** WSL2 has no `perf` package for its kernel, but the binary from
+  `linux-tools-generic` works, and the script finds it. WSL2 does not expose
+  hardware counters, so the script falls back to timer sampling (`cpu-clock`),
+  which gives correct per-function profiles but no cache-miss counts. Unlike
+  gprof, perf attributes OpenMP-outlined functions correctly.
+
+Which kernels you get depends on the CPU, and the script records it in
+`backends.txt`. Intel client CPUs since Alder Lake have AVX2 and AVX-VNNI but no
+AVX-512; recent AMD Ryzen has AVX-512 and VNNI. Either way the FP32 path is the
+AVX2 6x16 kernel and INT8 uses VNNI when present.
+
+**ARM.** The NEON kernels (8x12 `fmla` by element for FP32, 8x12 `sdot` for
+INT8) pass every test cross-compiled under `qemu-aarch64` and natively on a
+GitHub macOS runner. A preview from a virtual M1 is in
+`results/apple-m1-runner/`: INT8 is 1.8x FP32 there, but that machine's peak
+measurement reads below the kernel, so its roofline is broken. For real ARM
+numbers, the same script runs unchanged on an AWS Graviton instance
+(`c7g.xlarge`, Ubuntu 24.04, about an hour). Graviton has the hardware counters
+WSL2 lacks.
 
 ## Where to look for the usual questions
 

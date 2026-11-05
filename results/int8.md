@@ -71,10 +71,12 @@ type. conv1 gains little: with K = 27 its cost was never the arithmetic.
 Earlier in this milestone the ratio read 1.63x; the last fix sped FP32 up by
 more than INT8 and narrowed it.
 
-Measured on the Mac this project is aimed at, the ratio will differ: Apple
-Silicon has no VNNI but has `sdot` with 4 NEON pipes against 4 FMA pipes, so
-the int8 GEMM should again be 2x to 4x the fp32 one; the NEON path was
-validated for correctness under qemu, not timed.
+On ARM the ratio differs: there is no VNNI, but `sdot` does 16 multiply-adds
+per instruction against `fmla`'s 4. On the GitHub virtual M1
+(`results/apple-m1-runner/`) INT8 ran 1.8x faster than FP32 end to end. On an
+x86 laptop without any VNNI (Intel before Ice Lake, AMD before Zen 4), INT8 falls
+back to the AVX2 `vpmaddwd` kernel, which does 2x the multiply-adds of FP32
+FMA rather than 4x, so expect less.
 
 ## Where the time goes (final, `tinyinfer parity --profile`, 1,000 images, batch 64, 4 threads)
 
@@ -134,8 +136,9 @@ Three sources were used, because each one lies in its own way:
   `-march=haswell` build (AVX2 kernels, the `vpmaddwd` int8 fallback). They
   are the same source and the same stages, not the same kernels.
 
-This is where `perf` or Instruments would be used on a machine that has
-them; on this VM neither is available.
+`tools/run_benchmarks.sh` adds `perf` profiles on any machine that has it,
+including WSL2, where it falls back to timer sampling. perf also attributes
+OpenMP-outlined functions correctly, which gprof did not.
 
 ### Before
 
