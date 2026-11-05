@@ -45,5 +45,10 @@ implements exactly the five ops below and nothing else.
 - Best epoch: 20 at 83.71% (the final-epoch weights are the ones exported)
 - Per-epoch log: `results/train_log.csv`
 
+Versions: the weights in `data/export/` and every number in `results/` come from
+torch 2.14.1 (seed 0). `python/requirements.txt` has since moved to torch 2.15.0;
+retraining with it is expected to give a similar but not bit-identical model, so
+re-export and re-run the parity test before comparing numbers.
+
 This is a deliberately small model. The point of the project is the engine
 that runs it, so accuracy is recorded, not tuned.
