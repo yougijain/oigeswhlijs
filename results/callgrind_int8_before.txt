@@ -1,0 +1,40 @@
+Profile data file '/home/user/oigeswhlijs/build-hsw/cg.int8.out' (creator: callgrind-3.22.0)
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 406353065
+Trigger: Program termination
+Profiled target:  /home/user/oigeswhlijs/build-hsw/tinyinfer parity --int8 /home/user/oigeswhlijs/data/export/weights_int8.bin --gemm-int8 threaded --images /home/user/oigeswhlijs/data/export/test_images.bin --logits /home/user/oigeswhlijs/data/export/ref_logits.bin --batch 64 --limit 256 (PID 4994, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+Ir                     
+2,273,018,048 (100.0%)  PROGRAM TOTALS
+Ir                    file:function
+653,563,136 (28.75%)  /home/user/oigeswhlijs/src/quant/gemm_int8_kernel.h:tinyinfer::kernel_i8::run_panel(int, int, int, short const*, signed char const*, int const*, int*, int, bool) [clone .isra.0] [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+560,394,828 (24.65%)  /home/user/oigeswhlijs/src/quant/gemm_int8_kernel.h:tinyinfer::gemm_s8_threaded(int, int, int, signed char const*, int, signed char const*, int, int*, int) [clone ._omp_fn.0]
+388,907,936 (17.11%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/avx2intrin.h:tinyinfer::kernel_i8::run_panel(int, int, int, short const*, signed char const*, int const*, int*, int, bool) [clone .isra.0]
+134,530,488 ( 5.92%)  /home/user/oigeswhlijs/src/quant/quant.cpp:tinyinfer::QConv2d::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::TensorT<signed char>&, tinyinfer::TensorT<signed char>&, tinyinfer::TensorT<int>&, tinyinfer::GemmInt8Kind, tinyinfer::QConvTimes*) const [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+102,760,532 ( 4.52%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::relu_(tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 93,430,851 ( 4.11%)  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S:__memset_avx2_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 83,131,104 ( 3.66%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/avxintrin.h:tinyinfer::kernel_i8::run_panel(int, int, int, short const*, signed char const*, int const*, int*, int, bool) [clone .isra.0]
+ 69,549,740 ( 3.06%)  /home/user/oigeswhlijs/src/quant/quant.cpp:tinyinfer::im2col_nhwc_i8(signed char const*, int, int, int, int, int, int, signed char*) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 53,768,551 ( 2.37%)  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:__memcpy_avx_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 26,738,861 ( 1.18%)  /home/user/oigeswhlijs/src/quant/quant.cpp:tinyinfer::quantize_activations(float const*, long, float, signed char*) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 26,738,688 ( 1.18%)  /usr/include/c++/13/bits/stl_algobase.h:tinyinfer::quantize_activations(float const*, long, float, signed char*)
+ 19,551,544 ( 0.86%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 18,350,104 ( 0.81%)  /usr/include/c++/13/bits/stl_algobase.h:tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&)
+  9,458,688 ( 0.42%)  /usr/include/x86_64-linux-gnu/bits/string_fortified.h:tinyinfer::im2col_nhwc_i8(signed char const*, int, int, int, int, int, int, signed char*)
+  8,141,384 ( 0.36%)  /home/user/oigeswhlijs/src/quant/gemm_int8_kernel.h:tinyinfer::gemm_s8_threaded(int, int, int, signed char const*, int, signed char const*, int, int*, int)
+  7,873,724 ( 0.35%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::preprocess_cifar(tinyinfer::TensorT<unsigned char> const&, float const*, float const*, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+-- Auto-annotated source: /usr/lib/gcc/x86_64-linux-gnu/13/include/avxintrin.h
+Ir                  
+-- line 1352 ----------------------------------------
+         .           			  __A, __A, __A, __A, __A, __A, __A, __A,
+         .           			  __A, __A, __A, __A, __A, __A, __A, __A,
+         .           			  __A, __A, __A, __A, __A, __A, __A, __A);
+         .           }

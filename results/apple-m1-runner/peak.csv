@@ -1,0 +1,5 @@
+kernel,lanes,accumulators,threads,median_ms,gflops
+scalar,1,8,1,296.116375,10.806562
+scalar,1,8,3,311.337792,30.834676
+neon,4,24,1,838.608291,45.790151
+neon,4,24,3,749.372542,153.728611

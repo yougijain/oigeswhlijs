@@ -1,0 +1,40 @@
+Profile data file '/home/user/oigeswhlijs/build-hsw/cg.fp32.out' (creator: callgrind-3.22.0)
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 236918500
+Trigger: Program termination
+Profiled target:  /home/user/oigeswhlijs/build-hsw/tinyinfer parity --weights /home/user/oigeswhlijs/data/export/weights.bin --gemm threaded --images /home/user/oigeswhlijs/data/export/test_images.bin --logits /home/user/oigeswhlijs/data/export/ref_logits.bin --batch 64 --limit 256 (PID 4973, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+Ir                     
+1,408,843,471 (100.0%)  PROGRAM TOTALS
+Ir                    file:function
+330,115,392 (23.43%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/fmaintrin.h:tinyinfer::kernel::micro_kernel(int, float const*, float const*, float*, int, bool)
+224,247,568 (15.92%)  /usr/lib/gcc/x86_64-linux-gnu/13/include/avxintrin.h:tinyinfer::kernel::micro_kernel(int, float const*, float const*, float*, int, bool)
+222,308,072 (15.78%)  /home/user/oigeswhlijs/src/gemm/gemm_kernel.h:tinyinfer::gemm_threaded(int, int, int, float const*, int, float const*, int, float*, int) [clone ._omp_fn.0]
+123,315,680 ( 8.75%)  /home/user/oigeswhlijs/src/gemm/gemm_kernel.h:tinyinfer::kernel::micro_kernel(int, float const*, float const*, float*, int, bool) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+105,170,288 ( 7.47%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::Conv2d::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::TensorT<float>&, tinyinfer::GemmKind, tinyinfer::ConvTimes*) const [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+102,760,532 ( 7.29%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::relu_(tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+100,757,459 ( 7.15%)  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S:__memset_avx2_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 69,535,416 ( 4.94%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::im2col_nhwc(float const*, int, int, int, int, int, int, float*) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 51,249,670 ( 3.64%)  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:__memcpy_avx_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 19,551,544 ( 1.39%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+ 18,350,104 ( 1.30%)  /usr/include/c++/13/bits/stl_algobase.h:tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&)
+  9,458,688 ( 0.67%)  /usr/include/x86_64-linux-gnu/bits/string_fortified.h:tinyinfer::im2col_nhwc(float const*, int, int, int, int, int, int, float*)
+  8,276,664 ( 0.59%)  /home/user/oigeswhlijs/src/gemm/gemm_kernel.h:tinyinfer::kernel::run_panel(int, int, int, float const*, float const*, float*, int, bool) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  7,873,724 ( 0.56%)  /home/user/oigeswhlijs/src/layers.cpp:tinyinfer::preprocess_cifar(tinyinfer::TensorT<unsigned char> const&, float const*, float const*, tinyinfer::TensorT<float>&) [/home/user/oigeswhlijs/build-hsw/tinyinfer]
+  5,855,344 ( 0.42%)  ???:0x000000000010b6a0 [???]
+-- Auto-annotated source: /home/user/oigeswhlijs/src/layers.cpp
+Ir                   
+-- line 9 ----------------------------------------
+          .           
+          .           namespace {
+          .           
+          .           using Clock = std::chrono::steady_clock;
+          .           double ms_since(Clock::time_point t0) {

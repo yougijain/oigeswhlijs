@@ -1,0 +1,22 @@
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+ 54.61      2.25     2.25  9384400     0.00     0.00  tinyinfer::kernel::micro_kernel(int, float const*, float const*, float*, int, bool)
+ 17.96      2.99     0.74      400     1.85     7.53  tinyinfer::gemm_threaded(int, int, int, float const*, int, float const*, int, float*, int)
+  7.52      3.30     0.31      300     1.03     1.03  tinyinfer::relu_(tinyinfer::TensorT<float>&)
+  6.31      3.56     0.26      300     0.87     9.19  tinyinfer::Conv2d::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::TensorT<float>&, tinyinfer::GemmKind, tinyinfer::ConvTimes*) const
+  5.83      3.80     0.24      300     0.80     0.80  tinyinfer::im2col_nhwc(float const*, int, int, int, int, int, int, float*)
+  3.16      3.93     0.13      300     0.43     0.43  tinyinfer::maxpool2x2_nhwc(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&)
+  2.18      4.02     0.09      100     0.90     0.90  tinyinfer::preprocess_cifar(tinyinfer::TensorT<unsigned char> const&, float const*, float const*, tinyinfer::TensorT<float>&)
+  1.94      4.10     0.08                             _init
+  0.49      4.12     0.02   241800     0.00     0.01  tinyinfer::kernel::run_panel(int, int, int, float const*, float const*, float*, int, bool)
+  0.00      4.12     0.00     1318     0.00     0.00  tinyinfer::checked_numel(std::vector<long, std::allocator<long> > const&)
+  0.00      4.12     0.00      704     0.00     0.00  tinyinfer::(anonymous namespace)::check_rank(tinyinfer::TensorT<float> const&, unsigned long, char const*)
+  0.00      4.12     0.00      704     0.00     0.00  std::vector<float, std::allocator<float> >::_M_default_append(unsigned long)
+  0.00      4.12     0.00      400     0.00     0.00  tinyinfer::gemm(tinyinfer::GemmKind, int, int, int, float const*, int, float const*, int, float*, int)
+  0.00      4.12     0.00      112     0.00     0.00  std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::_Select1st<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > >::find(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) const
+  0.00      4.12     0.00      100     0.00    40.40  tinyinfer::TinyCNN::forward(tinyinfer::TensorT<unsigned char> const&, tinyinfer::GemmKind, tinyinfer::Profile*, tinyinfer::LayerInputStats*)
+  0.00      4.12     0.00      100     0.00     7.53  tinyinfer::Linear::forward(tinyinfer::TensorT<float> const&, tinyinfer::TensorT<float>&, tinyinfer::GemmKind) const
+  0.00      4.12     0.00       38     0.00     0.00  (anonymous namespace)::usage()
